@@ -11,29 +11,30 @@ export default function TopBar() {
   }
 
   return (
-    <div className="topbar">
+    <header className="topbar">
       <Link to="/" className="brand">
-        FlockCheck <small>poultry health scanner</small>
+        <span className="brand-mark">F</span>
+        <span className="brand-copy">
+          FlockCheck
+          <small>AI poultry health</small>
+        </span>
       </Link>
-      <div className="nav-links">
+
+      <nav className="nav-links">
         {user ? (
           <>
-            <Link to="/predict">Scan</Link>
+            <Link to="/predict">Disease Scan</Link>
             <Link to="/history">History</Link>
-            <span style={{ color: "var(--text-muted)", fontSize: "0.9rem" }}>
-              {user.name}
-            </span>
-            <button className="link-btn" onClick={handleLogout}>
-              Log out
-            </button>
+            <span className="user-chip">{user.name}</span>
+            <button className="link-btn" onClick={handleLogout}>Log out</button>
           </>
         ) : (
           <>
             <Link to="/login">Log in</Link>
-            <Link to="/register">Sign up</Link>
+            <Link to="/register" className="nav-cta">Get started</Link>
           </>
         )}
-      </div>
-    </div>
+      </nav>
+    </header>
   );
 }
