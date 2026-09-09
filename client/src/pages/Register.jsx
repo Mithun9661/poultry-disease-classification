@@ -29,40 +29,49 @@ export default function Register() {
   }
 
   return (
-    <div className="page">
-      <h1>Create your account</h1>
-      <p className="subtitle">Start scanning your flock for early signs of disease.</p>
-
-      {error && <div className="error-banner">{error}</div>}
-
-      <form className="card" onSubmit={handleSubmit}>
-        <div className="field">
-          <label htmlFor="name">Full name</label>
-          <input id="name" value={name} onChange={(e) => setName(e.target.value)} required />
+    <main className="auth-page">
+      <section className="auth-shell">
+        <div className="auth-aside">
+          <span className="eyebrow light">Flock intelligence, simplified</span>
+          <h1>Start monitoring poultry health in minutes.</h1>
+          <p>Create an account to run image-based screenings and keep a record of previous scans.</p>
+          <div className="auth-benefits">
+            <span>✓ Secure personal scan history</span>
+            <span>✓ Four-class disease screening</span>
+            <span>✓ Confidence-based results</span>
+          </div>
         </div>
-        <div className="field">
-          <label htmlFor="email">Email</label>
-          <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-        </div>
-        <div className="field">
-          <label htmlFor="password">Password</label>
-          <input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            minLength={6}
-            required
-          />
-        </div>
-        <button className="btn btn-block" type="submit" disabled={loading}>
-          {loading ? "Creating account…" : "Create account"}
-        </button>
-      </form>
 
-      <p className="subtitle" style={{ marginTop: 20 }}>
-        Already have an account? <Link to="/login">Log in</Link>
-      </p>
-    </div>
+        <div className="auth-form-wrap">
+          <div className="auth-heading">
+            <span className="eyebrow">Create your account</span>
+            <h2>Welcome to FlockCheck</h2>
+            <p>Enter your details to begin screening your flock.</p>
+          </div>
+
+          {error && <div className="error-banner">{error}</div>}
+
+          <form className="auth-form" onSubmit={handleSubmit}>
+            <div className="field">
+              <label htmlFor="name">Full name</label>
+              <input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" required />
+            </div>
+            <div className="field">
+              <label htmlFor="email">Email address</label>
+              <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" required />
+            </div>
+            <div className="field">
+              <label htmlFor="password">Password</label>
+              <input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Minimum 6 characters" minLength={6} required />
+            </div>
+            <button className="btn btn-block btn-large" type="submit" disabled={loading}>
+              {loading ? "Creating account…" : "Create account"}
+            </button>
+          </form>
+
+          <p className="auth-switch">Already registered? <Link to="/login">Log in</Link></p>
+        </div>
+      </section>
+    </main>
   );
 }
