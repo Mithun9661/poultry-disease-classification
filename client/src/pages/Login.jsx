@@ -28,35 +28,45 @@ export default function Login() {
   }
 
   return (
-    <div className="page">
-      <h1>Welcome back</h1>
-      <p className="subtitle">Log in to scan your flock or check past results.</p>
-
-      {error && <div className="error-banner">{error}</div>}
-
-      <form className="card" onSubmit={handleSubmit}>
-        <div className="field">
-          <label htmlFor="email">Email</label>
-          <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+    <main className="auth-page">
+      <section className="auth-shell">
+        <div className="auth-aside">
+          <span className="eyebrow light">Poultry health, powered by AI</span>
+          <h1>Welcome back to your flock health dashboard.</h1>
+          <p>Continue screening samples and review previous disease predictions from one place.</p>
+          <div className="auth-benefits">
+            <span>✓ Fast image screening workflow</span>
+            <span>✓ Saved prediction history</span>
+            <span>✓ Clear confidence breakdown</span>
+          </div>
         </div>
-        <div className="field">
-          <label htmlFor="password">Password</label>
-          <input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-        </div>
-        <button className="btn btn-block" type="submit" disabled={loading}>
-          {loading ? "Logging in…" : "Log in"}
-        </button>
-      </form>
 
-      <p className="subtitle" style={{ marginTop: 20 }}>
-        Don't have an account? <Link to="/register">Sign up</Link>
-      </p>
-    </div>
+        <div className="auth-form-wrap">
+          <div className="auth-heading">
+            <span className="eyebrow">Account access</span>
+            <h2>Log in to FlockCheck</h2>
+            <p>Use your registered email and password.</p>
+          </div>
+
+          {error && <div className="error-banner">{error}</div>}
+
+          <form className="auth-form" onSubmit={handleSubmit}>
+            <div className="field">
+              <label htmlFor="email">Email address</label>
+              <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" required />
+            </div>
+            <div className="field">
+              <label htmlFor="password">Password</label>
+              <input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter your password" required />
+            </div>
+            <button className="btn btn-block btn-large" type="submit" disabled={loading}>
+              {loading ? "Logging in…" : "Log in"}
+            </button>
+          </form>
+
+          <p className="auth-switch">New to FlockCheck? <Link to="/register">Create an account</Link></p>
+        </div>
+      </section>
+    </main>
   );
 }
