@@ -27,7 +27,7 @@ export default function Register() {
   const navigate = useNavigate();
 
   if (authLoading) return <div className="auth-session-loader">Checking secure session…</div>;
-  if (user) return <Navigate to="/predict" replace />;
+  if (user) return <Navigate to="/dashboard" replace />;
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -54,7 +54,7 @@ export default function Register() {
 
       const { error: signInError } = await supabase.auth.signInWithPassword({ email: cleanEmail, password });
       if (signInError) throw signInError;
-      navigate("/predict", { replace: true });
+      navigate("/dashboard", { replace: true });
     } catch (err) {
       setError(err.message || "Registration failed. Please try again.");
     } finally {
@@ -70,7 +70,7 @@ export default function Register() {
             <div className="auth-kicker">CREATE YOUR CLOUD ACCOUNT</div>
             <h1>Start smarter poultry health screening.</h1>
             <p className="auth-story-lead">
-              Create one secure PoultryDetect account and use it across devices to access the AI detector, your screening workflow and future scan history.
+              Create one secure PoultryDetect account and use it across devices to access the AI detector, your screening dashboard and saved scan history.
             </p>
 
             <div className="auth-feature-list">
@@ -118,7 +118,7 @@ export default function Register() {
             </div>
 
             <h2>Create your account</h2>
-            <p className="auth-card-subtitle">Enter your details once. Your account will be created securely and you will be logged in automatically.</p>
+            <p className="auth-card-subtitle">Enter your details once. Your account will be created securely and your dashboard will open automatically.</p>
 
             {error && <div className="auth-error-premium">{error}</div>}
 
