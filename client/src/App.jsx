@@ -9,6 +9,7 @@ import Register from "./pages/Register";
 import Predict from "./pages/Predict";
 import History from "./pages/History";
 import "./animation.css";
+import "./auth-premium.css";
 
 export default function App() {
   return (
