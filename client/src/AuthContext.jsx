@@ -1,27 +1,48 @@
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
+import { supabase } from "./supabaseClient";
 
 const AuthContext = createContext(null);
 
+function mapUser(authUser) {
+  if (!authUser) return null;
+  return {
+    id: authUser.id,
+    email: authUser.email,
+    name: authUser.user_metadata?.full_name || authUser.user_metadata?.name || authUser.email?.split("@")[0] || "User",
+  };
+}
+
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(() => {
-    const stored = localStorage.getItem("user");
-    return stored ? JSON.parse(stored) : null;
-  });
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  function login(token, userData) {
-    localStorage.setItem("token", token);
-    localStorage.setItem("user", JSON.stringify(userData));
-    setUser(userData);
-  }
+  useEffect(() => {
+    let mounted = true;
 
-  function logout() {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
+    supabase.auth.getSession().then(({ data }) => {
+      if (!mounted) return;
+      setUser(mapUser(data.session?.user));
+      setLoading(false);
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(mapUser(session?.user));
+      setLoading(false);
+    });
+
+    return () => {
+      mounted = false;
+      listener.subscription.unsubscribe();
+    };
+  }, []);
+
+  async function logout() {
+    await supabase.auth.signOut();
     setUser(null);
   }
 
   return (
-    <AuthContext.Provider value={{ user, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, logout }}>
       {children}
     </AuthContext.Provider>
   );
