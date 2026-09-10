@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { registerAccount } from "../auth/authService";
-import { useAuth } from "../AuthContext";
+import { supabase } from "../supabaseClient";
 
 export default function Register() {
   const [name, setName] = useState("");
@@ -10,7 +9,6 @@ export default function Register() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
   const navigate = useNavigate();
 
   async function handleSubmit(e) {
@@ -24,15 +22,30 @@ export default function Register() {
 
     setLoading(true);
     try {
-      const data = await registerAccount({ name, email, password });
-      login(data.token, data.user);
-      navigate("/predict");
+      const cleanEmail = email.trim().toLowerCase();
+      const cleanName = name.trim();
+
+      const { data: registerData, error: registerError } = await supabase.functions.invoke("register-user", {
+        body: { name: cleanName, email: cleanEmail, password },
+      });
+
+      if (registerError) {
+        throw new Error(registerData?.message || registerError.message || "Registration failed.");
+      }
+
+      if (registerData?.message) {
+        throw new Error(registerData.message);
+      }
+
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: cleanEmail,
+        password,
+      });
+
+      if (signInError) throw signInError;
+      navigate("/predict", { replace: true });
     } catch (err) {
-      setError(
-        err.response?.data?.message ||
-          err.message ||
-          "Registration failed. Please try again."
-      );
+      setError(err.message || "Registration failed. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -44,18 +57,18 @@ export default function Register() {
         <div className="auth-promo">
           <Link to="/" className="auth-back">← Back to home</Link>
           <div className="auth-promo-content">
-            <span className="auth-pill">AI-assisted poultry screening</span>
+            <span className="auth-pill">Secure cloud account</span>
             <h1>Create your FlockCheck account.</h1>
-            <p>Register once, then open the disease detector and keep your screening workflow organized.</p>
+            <p>Register once and use the same account on any device to access the poultry detector.</p>
             <div className="promo-preview">
-              <div className="promo-preview-head"><span>Account benefits</span><span className="success-chip">Ready</span></div>
+              <div className="promo-preview-head"><span>Cloud authentication</span><span className="success-chip">Enabled</span></div>
               <div className="promo-preview-body">
                 <div className="promo-score"><span>AI</span><div><small>After registration</small><strong>Open Detector</strong></div></div>
                 <div className="promo-bars"><i style={{width:"90%"}} /><i style={{width:"68%"}} /><i style={{width:"46%"}} /></div>
               </div>
             </div>
           </div>
-          <p className="auth-note">FlockCheck · Poultry disease classification</p>
+          <p className="auth-note">FlockCheck · Powered by Supabase Auth</p>
         </div>
 
         <div className="auth-panel">
@@ -63,7 +76,7 @@ export default function Register() {
             <div className="auth-title">
               <span>Create account</span>
               <h2>Start with FlockCheck</h2>
-              <p>Enter your details. You will be logged in automatically after registration.</p>
+              <p>Your account will be created securely and logged in automatically.</p>
             </div>
 
             {error && <div className="error-banner">{error}</div>}
