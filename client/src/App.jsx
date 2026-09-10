@@ -11,6 +11,7 @@ import History from "./pages/History";
 import "./animation.css";
 import "./auth-premium.css";
 import "./result.css";
+import "./history-premium.css";
 
 export default function App() {
   return (
