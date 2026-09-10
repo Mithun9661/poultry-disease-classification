@@ -10,6 +10,7 @@ import Predict from "./pages/Predict";
 import History from "./pages/History";
 import "./animation.css";
 import "./auth-premium.css";
+import "./result.css";
 
 export default function App() {
   return (
