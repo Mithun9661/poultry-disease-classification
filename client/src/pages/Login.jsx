@@ -24,7 +24,7 @@ export default function Login() {
   const navigate = useNavigate();
 
   if (authLoading) return <div className="auth-session-loader">Checking secure session…</div>;
-  if (user) return <Navigate to="/predict" replace />;
+  if (user) return <Navigate to="/dashboard" replace />;
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -37,9 +37,10 @@ export default function Login() {
         password,
       });
       if (signInError) throw signInError;
-      navigate("/predict", { replace: true });
+      navigate("/dashboard", { replace: true });
     } catch (err) {
-      setError(err.message || "Login failed. Please try again.");
+      const message = err?.message || "Login failed. Please try again.";
+      setError(message.toLowerCase().includes("invalid login") ? "Incorrect email or password. Please try again." : message);
     } finally {
       setLoading(false);
     }
@@ -101,7 +102,7 @@ export default function Login() {
             </div>
 
             <h2>Log in to PoultryDetect</h2>
-            <p className="auth-card-subtitle">Enter the credentials linked to your cloud account to access your poultry disease detector.</p>
+            <p className="auth-card-subtitle">Enter the credentials linked to your cloud account to access your poultry health workspace.</p>
 
             {error && <div className="auth-error-premium">{error}</div>}
 
