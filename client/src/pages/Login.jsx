@@ -8,7 +8,6 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-
   const { login } = useAuth();
   const navigate = useNavigate();
 
@@ -28,43 +27,34 @@ export default function Login() {
   }
 
   return (
-    <main className="auth-page">
-      <section className="auth-shell">
-        <div className="auth-aside">
-          <span className="eyebrow light">Poultry health, powered by AI</span>
-          <h1>Welcome back to your flock health dashboard.</h1>
-          <p>Continue screening samples and review previous disease predictions from one place.</p>
-          <div className="auth-benefits">
-            <span>✓ Fast image screening workflow</span>
-            <span>✓ Saved prediction history</span>
-            <span>✓ Clear confidence breakdown</span>
+    <main className="auth-page-new">
+      <section className="auth-layout">
+        <div className="auth-promo auth-promo-login">
+          <Link to="/" className="auth-back">← Back to home</Link>
+          <div className="auth-promo-content">
+            <span className="auth-pill">Welcome back</span>
+            <h1>Your flock screening workspace is ready.</h1>
+            <p>Log in to continue running image screenings and reviewing your previous results.</p>
+            <div className="promo-preview login-preview">
+              <div className="promo-preview-head"><span>Workspace</span><span className="success-chip">Online</span></div>
+              <div className="mini-history-row"><span className="mini-history-icon">✓</span><div><strong>Scan history</strong><small>Results stay organized by date</small></div><span>→</span></div>
+              <div className="mini-history-row"><span className="mini-history-icon purple-bg">◎</span><div><strong>Confidence detail</strong><small>Review class probabilities</small></div><span>→</span></div>
+            </div>
           </div>
+          <p className="auth-note">FlockCheck · Poultry disease classification</p>
         </div>
 
-        <div className="auth-form-wrap">
-          <div className="auth-heading">
-            <span className="eyebrow">Account access</span>
-            <h2>Log in to FlockCheck</h2>
-            <p>Use your registered email and password.</p>
+        <div className="auth-panel">
+          <div className="auth-card-new">
+            <div className="auth-title"><span>Account access</span><h2>Log in to FlockCheck</h2><p>Enter the credentials linked to your account.</p></div>
+            {error && <div className="error-banner">{error}</div>}
+            <form onSubmit={handleSubmit}>
+              <div className="field"><label htmlFor="email">Email address</label><input id="email" type="email" autoComplete="email" value={email} onChange={(e)=>setEmail(e.target.value)} placeholder="name@example.com" required /></div>
+              <div className="field"><label htmlFor="password">Password</label><input id="password" type="password" autoComplete="current-password" value={password} onChange={(e)=>setPassword(e.target.value)} placeholder="Enter your password" required /></div>
+              <button className="btn btn-primary btn-block btn-xl" type="submit" disabled={loading}>{loading ? "Logging in…" : "Log in"}<span>→</span></button>
+            </form>
+            <p className="auth-switch">New to FlockCheck? <Link to="/register">Create an account</Link></p>
           </div>
-
-          {error && <div className="error-banner">{error}</div>}
-
-          <form className="auth-form" onSubmit={handleSubmit}>
-            <div className="field">
-              <label htmlFor="email">Email address</label>
-              <input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" required />
-            </div>
-            <div className="field">
-              <label htmlFor="password">Password</label>
-              <input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter your password" required />
-            </div>
-            <button className="btn btn-block btn-large" type="submit" disabled={loading}>
-              {loading ? "Logging in…" : "Log in"}
-            </button>
-          </form>
-
-          <p className="auth-switch">New to FlockCheck? <Link to="/register">Create an account</Link></p>
         </div>
       </section>
     </main>
