@@ -14,6 +14,7 @@ export default function TopBar() {
   const navigate = useNavigate();
   const location = useLocation();
   const overlay = location.pathname === "/" || location.pathname === "/predict";
+  const active = (path) => location.pathname === path ? "active-nav-link" : "";
 
   async function handleLogout() {
     await logout();
@@ -23,7 +24,7 @@ export default function TopBar() {
   return (
     <header className={`topbar ${overlay ? "topbar-overlay" : ""}`}>
       <div className="nav-container">
-        <Link to="/" className="brand" aria-label="PoultryDetect home">
+        <Link to={user ? "/dashboard" : "/"} className="brand" aria-label="PoultryDetect home">
           <span className="brand-mark premium-brand-mark"><LeafLogo /></span>
           <span className="brand-copy-premium">
             <strong>PoultryDetect</strong>
@@ -34,15 +35,16 @@ export default function TopBar() {
         <nav className="nav-links">
           {user ? (
             <>
-              <Link to="/predict">Detect</Link>
-              <Link to="/history">History</Link>
+              <Link className={active("/dashboard")} to="/dashboard">Dashboard</Link>
+              <Link className={active("/predict")} to="/predict">Detect</Link>
+              <Link className={active("/history")} to="/history">History</Link>
               <span className="user-chip">{user.name}</span>
               <button className="link-btn" onClick={handleLogout}>Log out</button>
             </>
           ) : (
             <>
-              <Link to="/login">Log in</Link>
-              <Link to="/register" className="nav-cta">Sign up</Link>
+              <Link className={active("/login")} to="/login">Log in</Link>
+              <Link to="/register" className={`nav-cta ${active("/register")}`}>Sign up</Link>
             </>
           )}
         </nav>
