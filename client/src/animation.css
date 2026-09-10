@@ -1,0 +1,135 @@
+/* Site-wide AI dot-wave animation inspired by the uploaded reference clip */
+.ai-grid-background {
+  position: fixed;
+  inset: 0;
+  z-index: 3;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0.48;
+  mix-blend-mode: screen;
+}
+
+.ai-grid-layer,
+.ai-grid-scan {
+  position: absolute;
+  inset: -10%;
+}
+
+.ai-grid-layer {
+  background-image: radial-gradient(circle, rgba(62, 120, 255, 0.95) 0 1.45px, rgba(62, 120, 255, 0.16) 1.6px, transparent 2px);
+  background-size: 23px 23px;
+  transform-origin: center;
+  filter: drop-shadow(0 0 4px rgba(40, 110, 255, 0.62));
+  will-change: transform, opacity, filter;
+}
+
+.ai-grid-layer-one {
+  opacity: 0.52;
+  -webkit-mask-image: radial-gradient(ellipse at 30% 34%, #000 0 22%, rgba(0,0,0,.72) 38%, transparent 67%);
+  mask-image: radial-gradient(ellipse at 30% 34%, #000 0 22%, rgba(0,0,0,.72) 38%, transparent 67%);
+  animation: aiGridWaveOne 8.5s ease-in-out infinite alternate;
+}
+
+.ai-grid-layer-two {
+  opacity: 0.38;
+  background-size: 25px 25px;
+  background-position: 11px 8px;
+  -webkit-mask-image: radial-gradient(ellipse at 72% 62%, #000 0 18%, rgba(0,0,0,.70) 36%, transparent 66%);
+  mask-image: radial-gradient(ellipse at 72% 62%, #000 0 18%, rgba(0,0,0,.70) 36%, transparent 66%);
+  animation: aiGridWaveTwo 10.5s ease-in-out infinite alternate;
+}
+
+.ai-grid-layer-three {
+  opacity: 0.25;
+  background-size: 21px 21px;
+  background-position: -9px 5px;
+  -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,.95), rgba(0,0,0,.35) 68%, transparent 94%);
+  mask-image: linear-gradient(to bottom, rgba(0,0,0,.95), rgba(0,0,0,.35) 68%, transparent 94%);
+  animation: aiGridBreath 6.5s ease-in-out infinite;
+}
+
+.ai-grid-scan {
+  inset: -15% -10%;
+  opacity: 0.24;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    transparent 35%,
+    rgba(79, 137, 255, 0.16) 47%,
+    rgba(79, 137, 255, 0.42) 50%,
+    rgba(79, 137, 255, 0.16) 53%,
+    transparent 65%,
+    transparent 100%
+  );
+  filter: blur(8px);
+  animation: aiScanMove 5.8s linear infinite;
+}
+
+/* Keep page content above the animation while allowing the dots to float over page backgrounds. */
+.topbar { z-index: 40 !important; }
+.detector-panel,
+.page,
+.page-wide,
+.auth-page,
+.auth-shell,
+.history-grid,
+.card,
+.empty-state {
+  position: relative;
+  z-index: 6;
+}
+
+@keyframes aiGridWaveOne {
+  0% {
+    transform: translate3d(-3%, -2%, 0) scale(0.98);
+    opacity: 0.30;
+    filter: drop-shadow(0 0 3px rgba(40,110,255,.42));
+  }
+  45% {
+    transform: translate3d(3%, 2%, 0) scale(1.035);
+    opacity: 0.62;
+    filter: drop-shadow(0 0 7px rgba(40,110,255,.72));
+  }
+  100% {
+    transform: translate3d(1%, 4%, 0) scale(1.075);
+    opacity: 0.42;
+    filter: drop-shadow(0 0 5px rgba(40,110,255,.58));
+  }
+}
+
+@keyframes aiGridWaveTwo {
+  0% {
+    transform: translate3d(4%, 3%, 0) scale(1.07);
+    opacity: 0.22;
+  }
+  50% {
+    transform: translate3d(-2%, -1%, 0) scale(1.00);
+    opacity: 0.50;
+  }
+  100% {
+    transform: translate3d(-5%, 2%, 0) scale(0.96);
+    opacity: 0.28;
+  }
+}
+
+@keyframes aiGridBreath {
+  0%, 100% { transform: scale(1); opacity: 0.18; }
+  50% { transform: scale(1.045); opacity: 0.34; }
+}
+
+@keyframes aiScanMove {
+  0% { transform: translateY(-58%); }
+  100% { transform: translateY(58%); }
+}
+
+@media (max-width: 700px) {
+  .ai-grid-background { opacity: 0.36; }
+  .ai-grid-layer { background-size: 19px 19px; }
+  .ai-grid-layer-two { background-size: 21px 21px; }
+  .ai-grid-layer-three { background-size: 18px 18px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-grid-layer,
+  .ai-grid-scan { animation: none !important; }
+}
