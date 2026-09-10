@@ -31,18 +31,27 @@ const diseaseInfo = {
   },
 };
 
+function confidenceLabel(value) {
+  if (value >= 0.8) return "High confidence";
+  if (value >= 0.6) return "Moderate confidence";
+  return "Low confidence";
+}
+
 export default function Home() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const inputRef = useRef(null);
+  const cameraRef = useRef(null);
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [qualityNote, setQualityNote] = useState("");
+  const [dragActive, setDragActive] = useState(false);
   const [result, setResult] = useState(null);
   const [historyStatus, setHistoryStatus] = useState("");
 
-  function chooseFile(selected) {
+  async function chooseFile(selected) {
     if (!selected) return;
     if (!selected.type.startsWith("image/")) {
       setError("Please choose a JPG or PNG image.");
@@ -52,12 +61,33 @@ export default function Home() {
       setError("Image is too large. Please choose a file under 5 MB.");
       return;
     }
+
+    let note = "";
+    try {
+      const bitmap = await createImageBitmap(selected);
+      if (bitmap.width < 160 || bitmap.height < 160) {
+        note = "This image is quite small. A clearer, higher-resolution sample may give a more reliable result.";
+      } else if (Math.max(bitmap.width / bitmap.height, bitmap.height / bitmap.width) > 3) {
+        note = "This image is very narrow. For best results, use a sample where the relevant poultry area fills most of the frame.";
+      }
+      bitmap.close?.();
+    } catch {
+      // The classifier will still validate whether the browser can decode the image.
+    }
+
     if (preview) URL.revokeObjectURL(preview);
     setFile(selected);
     setPreview(URL.createObjectURL(selected));
     setResult(null);
     setHistoryStatus("");
+    setQualityNote(note);
     setError("");
+  }
+
+  function handleDrop(event) {
+    event.preventDefault();
+    setDragActive(false);
+    chooseFile(event.dataTransfer.files?.[0]);
   }
 
   async function saveHistory(prediction) {
@@ -121,8 +151,10 @@ export default function Home() {
     setFile(null);
     setPreview("");
     setHistoryStatus("");
+    setQualityNote("");
     setError("");
     if (inputRef.current) inputRef.current.value = "";
+    if (cameraRef.current) cameraRef.current.value = "";
   }
 
   function downloadReport() {
@@ -134,7 +166,7 @@ export default function Home() {
     const symptoms = (result.symptoms || []).map((item) => `<li>${item}</li>`).join("");
     const prevention = (result.prevention || []).map((item) => `<li>${item}</li>`).join("");
 
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>PoultryDetect Report</title><style>body{font-family:Arial,sans-serif;max-width:760px;margin:40px auto;color:#172033;line-height:1.55}h1{color:#087b5b}h2{margin-bottom:4px}.badge{display:inline-block;padding:6px 10px;border-radius:20px;background:#e9f8f2;color:#087b5b;font-weight:700}table{width:100%;border-collapse:collapse;margin:18px 0}td{padding:9px;border-bottom:1px solid #ddd}td:last-child{text-align:right;font-weight:700}.note{margin-top:30px;padding:14px;background:#f5f7f9;border-radius:10px;color:#596579}</style></head><body><span class="badge">PoultryDetect AI Screening Report</span><h1>${result.predictedClass}</h1><h2>Confidence: ${Math.round(result.confidence * 100)}%</h2><p>${result.description}</p><h3>Class probabilities</h3><table>${probabilityRows}</table><h3>Possible associated signs</h3><ul>${symptoms}</ul><h3>Prevention / management</h3><ul>${prevention}</ul><h3>Suggested next step</h3><p>${result.nextStep}</p><p><strong>Generated:</strong> ${generatedAt}</p><div class="note">Academic screening aid only. This result is not a veterinary diagnosis. Consult a qualified poultry veterinarian for diagnosis and treatment decisions.</div></body></html>`;
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>PoultryDetect Report</title><style>body{font-family:Arial,sans-serif;max-width:760px;margin:40px auto;color:#172033;line-height:1.55}h1{color:#087b5b}h2{margin-bottom:4px}.badge{display:inline-block;padding:6px 10px;border-radius:20px;background:#e9f8f2;color:#087b5b;font-weight:700}table{width:100%;border-collapse:collapse;margin:18px 0}td{padding:9px;border-bottom:1px solid #ddd}td:last-child{text-align:right;font-weight:700}.note{margin-top:30px;padding:14px;background:#f5f7f9;border-radius:10px;color:#596579}</style></head><body><span class="badge">PoultryDetect AI Screening Report</span><h1>${result.predictedClass}</h1><h2>Confidence: ${Math.round(result.confidence * 100)}% — ${confidenceLabel(result.confidence)}</h2><p>${result.description}</p><h3>Class probabilities</h3><table>${probabilityRows}</table><h3>Possible associated signs</h3><ul>${symptoms}</ul><h3>Prevention / management</h3><ul>${prevention}</ul><h3>Suggested next step</h3><p>${result.nextStep}</p><p><strong>Generated:</strong> ${generatedAt}</p><div class="note">Academic screening aid only. This result is not a veterinary diagnosis. Consult a qualified poultry veterinarian for diagnosis and treatment decisions.</div></body></html>`;
 
     const blob = new Blob([html], { type: "text/html" });
     const url = URL.createObjectURL(blob);
@@ -148,6 +180,7 @@ export default function Home() {
   }
 
   const confidencePercent = result ? Math.round(result.confidence * 100) : 0;
+  const lowConfidence = result && result.confidence < 0.6;
 
   return (
     <main className="reference-stage">
@@ -156,38 +189,56 @@ export default function Home() {
       <section className={`reference-panel ${result ? "reference-panel-result" : ""}`}>
         <div className="reference-kicker">AI + MACHINE LEARNING</div>
         <h1>POULTRY DISEASE DETECTION</h1>
-        {!result && <p className="reference-subtitle">PLEASE SELECT IMAGE SAMPLE</p>}
+        {!result && <p className="reference-subtitle">UPLOAD OR CAPTURE A SAMPLE</p>}
 
         {error && <div className="reference-error">{error}</div>}
 
         {!result && (
           <>
-            {preview && (
-              <div className="reference-preview-wrap">
-                <img src={preview} alt="Selected poultry sample" className="reference-preview" />
-              </div>
-            )}
+            <div
+              className={`smart-upload-zone ${dragActive ? "drag-active" : ""} ${preview ? "has-preview" : ""}`}
+              onDragOver={(event) => { event.preventDefault(); setDragActive(true); }}
+              onDragLeave={() => setDragActive(false)}
+              onDrop={handleDrop}
+            >
+              {preview ? (
+                <div className="smart-preview-wrap">
+                  <img src={preview} alt="Selected poultry sample" className="smart-preview-image" />
+                  <div className="smart-preview-meta">
+                    <strong>{file?.name}</strong>
+                    <small>{file ? `${(file.size / 1024 / 1024).toFixed(2)} MB` : ""}</small>
+                  </div>
+                </div>
+              ) : (
+                <div className="smart-upload-copy">
+                  <span className="smart-upload-icon">◎</span>
+                  <strong>Drop a poultry sample image here</strong>
+                  <small>JPG or PNG · maximum 5 MB · clear, well-lit image recommended</small>
+                </div>
+              )}
 
-            <label className="reference-upload" onClick={() => inputRef.current?.click()}>
-              <span className="reference-upload-button">Choose file</span>
-              <span className={`reference-file-name ${file ? "has-file" : ""}`}>
-                {file ? file.name : "No file chosen"}
-              </span>
-              <input
-                ref={inputRef}
-                type="file"
-                accept="image/jpeg,image/png"
-                onChange={(e) => chooseFile(e.target.files?.[0])}
-              />
-            </label>
+              <div className="smart-upload-actions">
+                <button type="button" onClick={() => inputRef.current?.click()}>{preview ? "Change image" : "Browse files"}</button>
+                <button type="button" className="camera-button" onClick={() => cameraRef.current?.click()}>◉ Use camera</button>
+              </div>
+
+              <input ref={inputRef} className="smart-hidden-input" type="file" accept="image/jpeg,image/png" onChange={(e) => chooseFile(e.target.files?.[0])} />
+              <input ref={cameraRef} className="smart-hidden-input" type="file" accept="image/*" capture="environment" onChange={(e) => chooseFile(e.target.files?.[0])} />
+            </div>
+
+            {qualityNote && <div className="image-quality-note">ⓘ {qualityNote}</div>}
+
+            <div className="detector-tips">
+              <span>✓ Good lighting</span><span>✓ Relevant area visible</span><span>✓ Avoid heavy blur</span>
+            </div>
 
             <button
-              className="reference-analyze"
+              className="reference-analyze smart-analyze-button"
               type="button"
               disabled={!file || loading}
               onClick={analyze}
             >
-              {loading ? "ANALYZING..." : user ? "DETECT DISEASE" : "LOG IN TO DETECT"}
+              {loading ? <><span className="analyze-spinner" /> ANALYZING SAMPLE...</> : user ? "DETECT DISEASE →" : "LOG IN TO DETECT"}
             </button>
           </>
         )}
@@ -204,6 +255,13 @@ export default function Home() {
               </span>
             </div>
 
+            {lowConfidence && (
+              <div className="low-confidence-warning">
+                <span>!</span>
+                <div><strong>Low-confidence result</strong><p>The model is uncertain about this sample. Try a clearer image or another angle before relying on this screening result.</p></div>
+              </div>
+            )}
+
             <div className="result-summary-grid">
               <div className="result-image-card">
                 <img src={preview} alt="Analyzed poultry sample" />
@@ -216,6 +274,7 @@ export default function Home() {
                 <div className="result-title-row">
                   <div>
                     <h2>{result.predictedClass}</h2>
+                    <span className={`confidence-quality ${result.confidence >= .8 ? "high" : result.confidence >= .6 ? "medium" : "low"}`}>{confidenceLabel(result.confidence)}</span>
                     <p>{result.description}</p>
                   </div>
                   <div className="confidence-ring" style={{ "--score": `${confidencePercent}%` }}>
