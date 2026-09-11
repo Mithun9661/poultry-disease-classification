@@ -1,0 +1,86 @@
+name: PoultryDetect quality checks
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**/*.md"
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  frontend-build:
+    name: React production build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - run: npm install
+      - run: npm run build
+
+  backend-smoke:
+    name: Express + MongoDB smoke test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm install
+      - run: npm test
+
+  model-contract:
+    name: MobileNetV2 deployment contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Verify TensorFlow.js model metadata and shards
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path("client/public/models/mobilenetv2")
+          model_path = root / "model.json"
+          assert model_path.is_file(), "model.json is missing"
+          assert (root / "PROVENANCE.txt").is_file(), "model provenance is missing"
+          assert (root / "LICENSE-UPSTREAM.txt").is_file(), "upstream license is missing"
+
+          data = json.loads(model_path.read_text(encoding="utf-8"))
+          assert data.get("format") == "layers-model", data.get("format")
+          config = data["modelTopology"]["model_config"]["config"]
+          layers = config["layers"]
+          input_layer = layers[0]["config"]
+          assert input_layer["batch_input_shape"] == [None, 128, 128, 3], input_layer["batch_input_shape"]
+          dense = layers[-1]["config"]
+          assert dense["units"] == 4, dense["units"]
+          assert dense["activation"] == "softmax", dense["activation"]
+
+          manifest = data["weightsManifest"]
+          shard_paths = [path for group in manifest for path in group["paths"]]
+          assert shard_paths, "No weight shards declared"
+          for shard in shard_paths:
+              shard_path = root / shard
+              assert shard_path.is_file(), f"Missing weight shard: {shard}"
+              assert shard_path.stat().st_size > 0, f"Empty weight shard: {shard}"
+
+          print(f"Model contract OK: 128x128 RGB -> 4-class softmax; {len(shard_paths)} weight shards")
+          PY
+      - name: Syntax-check reproducible evaluator
+        run: python -m py_compile ml/evaluation/evaluate_mobilenet.py
