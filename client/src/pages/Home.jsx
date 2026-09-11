@@ -4,7 +4,7 @@ import { useAuth } from "../AuthContext";
 import { supabase } from "../supabaseClient";
 import { predictPoultryDisease } from "../ml/browserModel";
 
-const diseaseInfo = {
+const fallbackDiseaseInfo = {
   Healthy: {
     description: "The uploaded sample is most consistent with the healthy class in the training dataset.",
     nextStep: "Continue routine flock monitoring, hygiene, clean water and balanced feed.",
@@ -31,10 +31,35 @@ const diseaseInfo = {
   },
 };
 
+const symptomOptions = [
+  ["bloody_droppings", "Bloody droppings"],
+  ["watery_diarrhea", "Watery / green diarrhea"],
+  ["reduced_appetite", "Reduced appetite"],
+  ["weakness", "Weakness / low activity"],
+  ["ruffled_feathers", "Ruffled feathers"],
+  ["respiratory_signs", "Coughing / respiratory signs"],
+  ["nervous_signs", "Twisted neck / nervous signs"],
+  ["reduced_egg_production", "Reduced egg production"],
+];
+
+const symptomLabelMap = Object.fromEntries(symptomOptions);
+
+const defaultEnvironment = {
+  age_group: "unknown",
+  litter_condition: "dry",
+  water_quality: "clean",
+  housing_hygiene: "good",
+  vaccination_status: "unknown",
+};
+
 function confidenceLabel(value) {
   if (value >= 0.8) return "High confidence";
   if (value >= 0.6) return "Moderate confidence";
   return "Low confidence";
+}
+
+function humanizeEnvironment(value) {
+  return String(value || "unknown").replaceAll("_", " ");
 }
 
 export default function Home() {
@@ -50,6 +75,9 @@ export default function Home() {
   const [dragActive, setDragActive] = useState(false);
   const [result, setResult] = useState(null);
   const [historyStatus, setHistoryStatus] = useState("");
+  const [selectedSymptoms, setSelectedSymptoms] = useState([]);
+  const [environment, setEnvironment] = useState(defaultEnvironment);
+  const [contextOpen, setContextOpen] = useState(true);
 
   async function chooseFile(selected) {
     if (!selected) return;
@@ -90,6 +118,37 @@ export default function Home() {
     chooseFile(event.dataTransfer.files?.[0]);
   }
 
+  function toggleSymptom(symptom) {
+    setSelectedSymptoms((current) =>
+      current.includes(symptom) ? current.filter((item) => item !== symptom) : [...current, symptom]
+    );
+  }
+
+  function updateEnvironment(key, value) {
+    setEnvironment((current) => ({ ...current, [key]: value }));
+  }
+
+  async function getDiseaseInfo(predictedClass) {
+    try {
+      const { data, error: infoError } = await supabase
+        .from("disease_info")
+        .select("description,symptoms,prevention,next_step")
+        .eq("disease_name", predictedClass)
+        .maybeSingle();
+
+      if (infoError || !data) throw infoError || new Error("Disease information unavailable");
+      return {
+        description: data.description,
+        symptoms: data.symptoms || [],
+        prevention: data.prevention || [],
+        nextStep: data.next_step,
+      };
+    } catch (infoError) {
+      console.warn("Using local disease information fallback:", infoError);
+      return fallbackDiseaseInfo[predictedClass] || {};
+    }
+  }
+
   async function saveHistory(prediction) {
     if (!user?.id || !file) return;
 
@@ -108,9 +167,14 @@ export default function Home() {
       confidence: prediction.confidence,
       probabilities: prediction.probabilities,
       image_path: imagePath,
+      reported_symptoms: selectedSymptoms,
+      environment,
     });
 
-    if (insertError) throw insertError;
+    if (insertError) {
+      await supabase.storage.from("prediction-images").remove([imagePath]);
+      throw insertError;
+    }
   }
 
   async function analyze() {
@@ -125,8 +189,13 @@ export default function Home() {
     setError("");
     try {
       const prediction = await predictPoultryDisease(file);
-      const info = diseaseInfo[prediction.predictedClass] || {};
-      const finalResult = { ...prediction, ...info };
+      const info = await getDiseaseInfo(prediction.predictedClass);
+      const finalResult = {
+        ...prediction,
+        ...info,
+        reportedSymptoms: [...selectedSymptoms],
+        environment: { ...environment },
+      };
       setResult(finalResult);
       setHistoryStatus("saving");
 
@@ -152,6 +221,9 @@ export default function Home() {
     setPreview("");
     setHistoryStatus("");
     setQualityNote("");
+    setSelectedSymptoms([]);
+    setEnvironment(defaultEnvironment);
+    setContextOpen(true);
     setError("");
     if (inputRef.current) inputRef.current.value = "";
     if (cameraRef.current) cameraRef.current.value = "";
@@ -165,8 +237,14 @@ export default function Home() {
       .join("");
     const symptoms = (result.symptoms || []).map((item) => `<li>${item}</li>`).join("");
     const prevention = (result.prevention || []).map((item) => `<li>${item}</li>`).join("");
+    const reportedSymptoms = result.reportedSymptoms?.length
+      ? result.reportedSymptoms.map((item) => `<li>${symptomLabelMap[item] || item}</li>`).join("")
+      : "<li>No symptoms selected</li>";
+    const environmentRows = Object.entries(result.environment || {})
+      .map(([key, value]) => `<tr><td>${key.replaceAll("_", " ")}</td><td>${humanizeEnvironment(value)}</td></tr>`)
+      .join("");
 
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>PoultryDetect Report</title><style>body{font-family:Arial,sans-serif;max-width:760px;margin:40px auto;color:#172033;line-height:1.55}h1{color:#087b5b}h2{margin-bottom:4px}.badge{display:inline-block;padding:6px 10px;border-radius:20px;background:#e9f8f2;color:#087b5b;font-weight:700}table{width:100%;border-collapse:collapse;margin:18px 0}td{padding:9px;border-bottom:1px solid #ddd}td:last-child{text-align:right;font-weight:700}.note{margin-top:30px;padding:14px;background:#f5f7f9;border-radius:10px;color:#596579}</style></head><body><span class="badge">PoultryDetect AI Screening Report</span><h1>${result.predictedClass}</h1><h2>Confidence: ${Math.round(result.confidence * 100)}% — ${confidenceLabel(result.confidence)}</h2><p>${result.description}</p><h3>Class probabilities</h3><table>${probabilityRows}</table><h3>Possible associated signs</h3><ul>${symptoms}</ul><h3>Prevention / management</h3><ul>${prevention}</ul><h3>Suggested next step</h3><p>${result.nextStep}</p><p><strong>Generated:</strong> ${generatedAt}</p><div class="note">Academic screening aid only. This result is not a veterinary diagnosis. Consult a qualified poultry veterinarian for diagnosis and treatment decisions.</div></body></html>`;
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>PoultryDetect Report</title><style>body{font-family:Arial,sans-serif;max-width:760px;margin:40px auto;color:#172033;line-height:1.55}h1{color:#087b5b}h2{margin-bottom:4px}.badge{display:inline-block;padding:6px 10px;border-radius:20px;background:#e9f8f2;color:#087b5b;font-weight:700}table{width:100%;border-collapse:collapse;margin:18px 0;text-transform:capitalize}td{padding:9px;border-bottom:1px solid #ddd}td:last-child{text-align:right;font-weight:700}.note{margin-top:30px;padding:14px;background:#f5f7f9;border-radius:10px;color:#596579}</style></head><body><span class="badge">PoultryDetect AI Screening Report</span><h1>${result.predictedClass}</h1><h2>Confidence: ${Math.round(result.confidence * 100)}% — ${confidenceLabel(result.confidence)}</h2><p>${result.description}</p><h3>Class probabilities</h3><table>${probabilityRows}</table><h3>Reported flock symptoms</h3><ul>${reportedSymptoms}</ul><h3>Environmental context</h3><table>${environmentRows}</table><p class="note">Reported symptoms and farm conditions are stored as supplementary screening context. They do not currently alter the image classifier score.</p><h3>Possible associated signs</h3><ul>${symptoms}</ul><h3>Prevention / management</h3><ul>${prevention}</ul><h3>Suggested next step</h3><p>${result.nextStep}</p><p><strong>Generated:</strong> ${generatedAt}</p><div class="note">Academic screening aid only. This result is not a veterinary diagnosis. Consult a qualified poultry veterinarian for diagnosis and treatment decisions.</div></body></html>`;
 
     const blob = new Blob([html], { type: "text/html" });
     const url = URL.createObjectURL(blob);
@@ -227,6 +305,42 @@ export default function Home() {
             </div>
 
             {qualityNote && <div className="image-quality-note">ⓘ {qualityNote}</div>}
+
+            <section className="screening-context-card">
+              <button type="button" className="context-toggle" onClick={() => setContextOpen((open) => !open)}>
+                <span><strong>Flock symptoms & environment</strong><small>Optional context from the original project requirement</small></span>
+                <b>{contextOpen ? "−" : "+"}</b>
+              </button>
+
+              {contextOpen && (
+                <div className="context-body">
+                  <div className="context-group">
+                    <div className="context-heading"><strong>Observed symptoms</strong><small>Select all that apply</small></div>
+                    <div className="symptom-chip-grid">
+                      {symptomOptions.map(([value, label]) => (
+                        <button
+                          type="button"
+                          key={value}
+                          className={selectedSymptoms.includes(value) ? "selected" : ""}
+                          onClick={() => toggleSymptom(value)}
+                        >
+                          <span>{selectedSymptoms.includes(value) ? "✓" : "+"}</span>{label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="environment-grid">
+                    <label><span>Bird age group</span><select value={environment.age_group} onChange={(e) => updateEnvironment("age_group", e.target.value)}><option value="unknown">Unknown</option><option value="chick">Chick</option><option value="grower">Grower</option><option value="adult">Adult</option></select></label>
+                    <label><span>Litter condition</span><select value={environment.litter_condition} onChange={(e) => updateEnvironment("litter_condition", e.target.value)}><option value="dry">Dry</option><option value="damp">Damp</option><option value="wet">Wet</option></select></label>
+                    <label><span>Water quality</span><select value={environment.water_quality} onChange={(e) => updateEnvironment("water_quality", e.target.value)}><option value="clean">Clean</option><option value="uncertain">Uncertain</option><option value="dirty">Dirty</option></select></label>
+                    <label><span>Housing hygiene</span><select value={environment.housing_hygiene} onChange={(e) => updateEnvironment("housing_hygiene", e.target.value)}><option value="good">Good</option><option value="fair">Fair</option><option value="poor">Poor</option></select></label>
+                    <label><span>Vaccination status</span><select value={environment.vaccination_status} onChange={(e) => updateEnvironment("vaccination_status", e.target.value)}><option value="unknown">Unknown</option><option value="up_to_date">Up to date</option><option value="partial">Partial</option><option value="not_vaccinated">Not vaccinated</option></select></label>
+                  </div>
+                  <p className="context-note">This context is saved with the scan for review. The current prediction score is produced by the image classifier only.</p>
+                </div>
+              )}
+            </section>
 
             <div className="detector-tips">
               <span>✓ Good lighting</span><span>✓ Relevant area visible</span><span>✓ Avoid heavy blur</span>
@@ -318,6 +432,24 @@ export default function Home() {
                 <ul className="result-bullet-list">
                   {(result.prevention || []).map((item) => <li key={item}><span>✓</span>{item}</li>)}
                 </ul>
+              </section>
+
+              <section className="result-section screening-context-result">
+                <div className="result-section-head"><div><span>REPORTED CONTEXT</span><h3>Symptoms & farm conditions</h3></div><small>Supplementary</small></div>
+                <div className="reported-context-grid">
+                  <div>
+                    <strong>Observed symptoms</strong>
+                    {result.reportedSymptoms?.length ? (
+                      <div className="reported-symptoms">{result.reportedSymptoms.map((item) => <span key={item}>{symptomLabelMap[item] || item}</span>)}</div>
+                    ) : <p>No symptoms selected.</p>}
+                  </div>
+                  <div className="reported-environment">
+                    {Object.entries(result.environment || {}).map(([key, value]) => (
+                      <p key={key}><span>{key.replaceAll("_", " ")}</span><strong>{humanizeEnvironment(value)}</strong></p>
+                    ))}
+                  </div>
+                </div>
+                <small className="context-result-note">This context is recorded with the scan and does not alter the current image-model score.</small>
               </section>
             </div>
 
