@@ -3,6 +3,20 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "../supabaseClient";
 
 const filters = ["All", "Healthy", "Coccidiosis", "Salmonella", "Newcastle"];
+const symptomLabels = {
+  bloody_droppings: "Bloody droppings",
+  watery_diarrhea: "Watery / green diarrhea",
+  reduced_appetite: "Reduced appetite",
+  weakness: "Weakness / low activity",
+  ruffled_feathers: "Ruffled feathers",
+  respiratory_signs: "Respiratory signs",
+  nervous_signs: "Nervous signs",
+  reduced_egg_production: "Reduced egg production",
+};
+
+function pretty(value) {
+  return String(value || "unknown").replaceAll("_", " ");
+}
 
 export default function History() {
   const navigate = useNavigate();
@@ -22,7 +36,7 @@ export default function History() {
         setLoading(true);
         const { data, error: queryError } = await supabase
           .from("predictions")
-          .select("id,predicted_class,confidence,probabilities,image_path,created_at")
+          .select("id,predicted_class,confidence,probabilities,image_path,reported_symptoms,environment,created_at")
           .order("created_at", { ascending: false });
 
         if (queryError) throw queryError;
@@ -62,7 +76,8 @@ export default function History() {
     const text = query.trim().toLowerCase();
     return predictions.filter((item) => {
       const filterMatch = filter === "All" || item.predicted_class === filter;
-      const searchMatch = !text || item.predicted_class.toLowerCase().includes(text);
+      const symptomText = (item.reported_symptoms || []).map((value) => symptomLabels[value] || value).join(" ").toLowerCase();
+      const searchMatch = !text || item.predicted_class.toLowerCase().includes(text) || symptomText.includes(text);
       return filterMatch && searchMatch;
     });
   }, [predictions, filter, query]);
@@ -123,7 +138,7 @@ export default function History() {
           <div>
             <span className="history-eyebrow">AI SCREENING RECORDS</span>
             <h1>Scan history</h1>
-            <p>Review your saved poultry disease screening results, confidence scores and sample images.</p>
+            <p>Review your saved poultry disease screening results, confidence scores, symptoms and farm context.</p>
           </div>
           <button className="history-new-scan" onClick={() => navigate("/predict")}>+ New scan</button>
         </div>
@@ -157,7 +172,7 @@ export default function History() {
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search disease class..."
+              placeholder="Search disease or symptom..."
               aria-label="Search scan history"
             />
           </div>
@@ -196,6 +211,7 @@ export default function History() {
             {filteredPredictions.map((item) => {
               const isHealthy = item.predicted_class === "Healthy";
               const confidence = Math.round(item.confidence * 100);
+              const contextCount = (item.reported_symptoms || []).length;
               return (
                 <article className="history-premium-card" key={item.id}>
                   <button className="history-image-button" onClick={() => setSelected(item)}>
@@ -220,6 +236,7 @@ export default function History() {
                     </div>
 
                     <p className="history-card-date">{formatDate(item.created_at)}</p>
+                    {contextCount > 0 && <p className="history-card-date">{contextCount} reported symptom{contextCount === 1 ? "" : "s"}</p>}
 
                     <div className="history-card-actions">
                       <button onClick={() => setSelected(item)}>Details</button>
@@ -266,7 +283,25 @@ export default function History() {
                     </div>
                   ))}
               </div>
-              <p className="history-modal-note">Academic screening result only — not a veterinary diagnosis.</p>
+
+              <div className="history-context-block">
+                <h3>Reported symptoms</h3>
+                {(selected.reported_symptoms || []).length ? (
+                  <div className="history-context-chips">
+                    {selected.reported_symptoms.map((value) => <span key={value}>{symptomLabels[value] || value}</span>)}
+                  </div>
+                ) : <p className="history-modal-date">No symptoms were selected for this scan.</p>}
+
+                {selected.environment && Object.keys(selected.environment).length > 0 && (
+                  <div className="history-context-env">
+                    {Object.entries(selected.environment).map(([key, value]) => (
+                      <p key={key}><span>{pretty(key)}</span><strong>{pretty(value)}</strong></p>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <p className="history-modal-note">Reported context is supplementary. The saved confidence score comes from the image classifier. Academic screening result only — not a veterinary diagnosis.</p>
               <button className="history-modal-delete" onClick={() => deletePrediction(selected)} disabled={deletingId === selected.id}>
                 {deletingId === selected.id ? "Deleting…" : "Delete this scan"}
               </button>
