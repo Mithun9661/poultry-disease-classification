@@ -1,15 +1,21 @@
-import * as tf from "@tensorflow/tfjs";
-
 const MODEL_URL = "/models/mobilenetv2/model.json";
 const CLASS_NAMES = ["Coccidiosis", "Healthy", "Newcastle", "Salmonella"];
 const INPUT_SIZE = 128;
 
+let tfPromise = null;
 let modelPromise = null;
+
+async function getTf() {
+  if (!tfPromise) tfPromise = import("@tensorflow/tfjs");
+  const tf = await tfPromise;
+  await tf.ready();
+  return tf;
+}
 
 async function getModel() {
   if (!modelPromise) {
     modelPromise = (async () => {
-      await tf.ready();
+      const tf = await getTf();
       const loaded = await tf.loadLayersModel(MODEL_URL);
       const warmup = tf.zeros([1, INPUT_SIZE, INPUT_SIZE, 3]);
       const output = loaded.predict(warmup);
@@ -26,6 +32,7 @@ async function getModel() {
 }
 
 async function fileToInputTensor(file) {
+  const tf = await getTf();
   const bitmap = await createImageBitmap(file);
   const canvas = document.createElement("canvas");
   canvas.width = INPUT_SIZE;
@@ -50,8 +57,6 @@ export async function predictWithTransferModel(file) {
   try {
     const rawOutput = model.predict(input);
     const predictionTensor = Array.isArray(rawOutput) ? rawOutput[0] : rawOutput;
-    // The converted checkpoint ends in Dense(4, activation="softmax"), so its
-    // output is already a probability distribution. Do not apply softmax twice.
     const values = Array.from(await predictionTensor.data());
 
     if (Array.isArray(rawOutput)) rawOutput.forEach((tensor) => tensor.dispose());
