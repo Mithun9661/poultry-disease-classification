@@ -169,6 +169,9 @@ export default function Home() {
       image_path: imagePath,
       reported_symptoms: selectedSymptoms,
       environment,
+      model_name: prediction.modelName || null,
+      model_version: prediction.modelVersion || null,
+      inference_ms: Number.isFinite(prediction.inferenceMs) ? prediction.inferenceMs : null,
     });
 
     if (insertError) {
@@ -243,8 +246,10 @@ export default function Home() {
     const environmentRows = Object.entries(result.environment || {})
       .map(([key, value]) => `<tr><td>${key.replaceAll("_", " ")}</td><td>${humanizeEnvironment(value)}</td></tr>`)
       .join("");
+    const modelDetails = `${result.modelName || "Classifier"}${result.modelVersion ? ` (${result.modelVersion})` : ""}`;
+    const runtimeDetails = Number.isFinite(result.inferenceMs) ? `${result.inferenceMs} ms` : "Not recorded";
 
-    const html = `<!doctype html><html><head><meta charset="utf-8"><title>PoultryDetect Report</title><style>body{font-family:Arial,sans-serif;max-width:760px;margin:40px auto;color:#172033;line-height:1.55}h1{color:#087b5b}h2{margin-bottom:4px}.badge{display:inline-block;padding:6px 10px;border-radius:20px;background:#e9f8f2;color:#087b5b;font-weight:700}table{width:100%;border-collapse:collapse;margin:18px 0;text-transform:capitalize}td{padding:9px;border-bottom:1px solid #ddd}td:last-child{text-align:right;font-weight:700}.note{margin-top:30px;padding:14px;background:#f5f7f9;border-radius:10px;color:#596579}</style></head><body><span class="badge">PoultryDetect AI Screening Report</span><h1>${result.predictedClass}</h1><h2>Confidence: ${Math.round(result.confidence * 100)}% — ${confidenceLabel(result.confidence)}</h2><p>${result.description}</p><h3>Class probabilities</h3><table>${probabilityRows}</table><h3>Reported flock symptoms</h3><ul>${reportedSymptoms}</ul><h3>Environmental context</h3><table>${environmentRows}</table><p class="note">Reported symptoms and farm conditions are stored as supplementary screening context. They do not currently alter the image classifier score.</p><h3>Possible associated signs</h3><ul>${symptoms}</ul><h3>Prevention / management</h3><ul>${prevention}</ul><h3>Suggested next step</h3><p>${result.nextStep}</p><p><strong>Generated:</strong> ${generatedAt}</p><div class="note">Academic screening aid only. This result is not a veterinary diagnosis. Consult a qualified poultry veterinarian for diagnosis and treatment decisions.</div></body></html>`;
+    const html = `<!doctype html><html><head><meta charset="utf-8"><title>PoultryDetect Report</title><style>body{font-family:Arial,sans-serif;max-width:760px;margin:40px auto;color:#172033;line-height:1.55}h1{color:#087b5b}h2{margin-bottom:4px}.badge{display:inline-block;padding:6px 10px;border-radius:20px;background:#e9f8f2;color:#087b5b;font-weight:700}table{width:100%;border-collapse:collapse;margin:18px 0;text-transform:capitalize}td{padding:9px;border-bottom:1px solid #ddd}td:last-child{text-align:right;font-weight:700}.note{margin-top:30px;padding:14px;background:#f5f7f9;border-radius:10px;color:#596579}</style></head><body><span class="badge">PoultryDetect AI Screening Report</span><h1>${result.predictedClass}</h1><h2>Confidence: ${Math.round(result.confidence * 100)}% — ${confidenceLabel(result.confidence)}</h2><p><strong>Model:</strong> ${modelDetails}<br><strong>Inference time:</strong> ${runtimeDetails}</p><p>${result.description}</p><h3>Class probabilities</h3><table>${probabilityRows}</table><h3>Reported flock symptoms</h3><ul>${reportedSymptoms}</ul><h3>Environmental context</h3><table>${environmentRows}</table><p class="note">Reported symptoms and farm conditions are stored as supplementary screening context. They do not currently alter the image classifier score.</p><h3>Possible associated signs</h3><ul>${symptoms}</ul><h3>Prevention / management</h3><ul>${prevention}</ul><h3>Suggested next step</h3><p>${result.nextStep}</p><p><strong>Generated:</strong> ${generatedAt}</p><div class="note">Academic screening aid only. This result is not a veterinary diagnosis. Consult a qualified poultry veterinarian for diagnosis and treatment decisions.</div></body></html>`;
 
     const blob = new Blob([html], { type: "text/html" });
     const url = URL.createObjectURL(blob);
@@ -369,6 +374,18 @@ export default function Home() {
               </span>
             </div>
 
+            <div className={`model-runtime-strip ${result.usedFallback ? "fallback" : "transfer"}`}>
+              <span>{result.usedFallback ? "Fallback model" : "Transfer learning active"}</span>
+              <strong>{result.modelName || "Classifier"}</strong>
+              <small>{result.inferenceEngine || "Browser"}{Number.isFinite(result.inferenceMs) ? ` · ${result.inferenceMs} ms` : ""}</small>
+            </div>
+
+            {result.usedFallback && (
+              <div className="model-fallback-warning">
+                MobileNetV2 could not be loaded for this scan, so the lightweight backup classifier was used. Re-scan when the connection is stable for the transfer-learning result.
+              </div>
+            )}
+
             {lowConfidence && (
               <div className="low-confidence-warning">
                 <span>!</span>
@@ -476,7 +493,7 @@ export default function Home() {
         )}
       </section>
 
-      <div className="reference-credit">Trained on the project dataset • Validation accuracy ≈ 87.4% • Academic project</div>
+      <div className="reference-credit">MobileNetV2 transfer-learning screening · TensorFlow.js browser inference · Academic project</div>
     </main>
   );
 }
