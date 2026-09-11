@@ -2,200 +2,312 @@
 
 ## 1. Project Title
 
-**Poultry Disease Classification using AI / Machine Learning**
-
-If your college title specifically mentions transfer learning, explain clearly that the repository contains a MobileNetV2 transfer-learning training module, while the current live demo uses a lightweight browser classifier for fast deployment.
+**Transfer Learning-Based Classification of Poultry Diseases for Enhanced Health Management**
 
 ## 2. One-Line Explanation
 
-PoultryDetect is a web application that allows a user to upload a poultry fecal sample image and receive an AI-assisted classification among Healthy, Coccidiosis, Salmonella, and Newcastle classes.
+PoultryDetect is a web application that classifies a poultry fecal sample image into **Healthy, Coccidiosis, Salmonella, or Newcastle** using a MobileNetV2 transfer-learning model and stores the screening result for later review.
 
 ## 3. Problem Statement
 
-Poultry farmers may not always have immediate access to expert screening. The project explores whether image classification can provide an early screening signal from poultry fecal sample images.
+Poultry diseases can spread quickly and expert screening may not always be immediately available. This project explores whether deep-learning image classification can provide an early screening signal from poultry fecal images.
 
-## 4. Main Technologies
+The system is an academic screening tool, **not a replacement for a veterinarian or laboratory diagnosis**.
 
-- React + Vite
+## 4. Technologies Used
+
+- React 18 + Vite
 - JavaScript
+- TensorFlow.js
+- MobileNetV2 Transfer Learning
 - Supabase Auth
 - Supabase PostgreSQL
 - Supabase Storage
 - Row Level Security
-- Browser-side ML inference
-- TensorFlow/Keras MobileNetV2 training module
-- GitHub
+- Node.js + Express
+- MongoDB + Mongoose reference backend
+- GitHub Actions
 - Vercel
 
 ## 5. Main Workflow
 
 ```text
-Register/Login
-    ↓
-Upload image
-    ↓
-Validate image
-    ↓
-Extract image features
-    ↓
-Classify into 4 classes
-    ↓
-Show confidence + probabilities
-    ↓
-Save result and image
-    ↓
-Show scan in History
+Register / Login
+      ↓
+Upload or capture fecal image
+      ↓
+Validate image type and size
+      ↓
+Lazy-load TensorFlow.js
+      ↓
+Resize image to 128 × 128 RGB
+      ↓
+Normalize pixels to [0,1]
+      ↓
+MobileNetV2 inference
+      ↓
+4-class Softmax output
+      ↓
+Prediction + confidence + probabilities
+      ↓
+Save image + metadata to private cloud history
+      ↓
+View / filter / delete / download report
 ```
 
-## 6. What Are the Four Classes?
+If the MobileNetV2 model cannot load, the application can use a lightweight fallback classifier and clearly identifies that fallback in the result.
+
+## 6. Disease Classes
 
 1. Healthy
 2. Coccidiosis
 3. Salmonella
 4. Newcastle
 
-## 7. What Does Confidence Mean?
+The MobileNetV2 checkpoint output order is:
 
-Confidence is the highest Softmax probability returned by the classifier. It represents how strongly the model prefers one class compared with the other classes for that input.
+```text
+Coccidiosis, Healthy, Newcastle, Salmonella
+```
 
-It is **not** the same as medical certainty.
+## 7. What Is Transfer Learning?
 
-## 8. Why Use Softmax?
+Transfer learning starts from a neural network that has already learned useful visual features from a large dataset, then adapts it to a new classification task.
 
-Softmax converts model scores into values between 0 and 1 that sum to 1, so they can be displayed as probabilities for the four classes.
+MobileNetV2 is suitable because it gives a strong accuracy/size trade-off and is designed to be computationally efficient.
 
-## 9. What Features Does the Live Model Use?
+## 8. What Model Runs in the Live Website?
 
-The live browser model extracts:
+The **primary live model is MobileNetV2 Transfer Learning**, converted from a Keras H5 checkpoint into TensorFlow.js Layers format.
 
-- RGB statistics
-- HSV statistics
-- color histograms
-- grayscale information
-- edge information
-- block-wise spatial color features
+Input:
 
-The extracted feature vector is standardized and then passed to learned linear class weights.
+```text
+128 × 128 × 3 RGB
+```
 
-## 10. What Is Transfer Learning?
+Output:
 
-Transfer learning reuses a model that was already trained on a large dataset and adapts it to a new task.
+```text
+4-class Softmax probabilities
+```
 
-In this project, the repository includes a MobileNetV2 pipeline initialized with ImageNet weights. The convolutional base is first frozen, a new classification head is trained, and later some upper layers are fine-tuned using a lower learning rate.
+TensorFlow.js runs the model directly in the user's browser. No Python inference server is required for the main production prediction flow.
 
-## 11. Why MobileNetV2?
+## 9. Did We Train the Exact Production MobileNetV2 Checkpoint?
 
-MobileNetV2 is lightweight, efficient, and suitable for image-classification applications where computation and deployment size matter.
+No. The current production checkpoint is an **attributed MIT-licensed reference checkpoint** from an upstream poultry-disease project.
 
-## 12. Why Is the Live Model Different?
+The repository keeps its provenance and upstream license beside the converted model. We do not falsely claim that this exact checkpoint was trained by our team.
 
-The current production demo uses a smaller browser classifier because it can run directly inside the browser without deploying a heavy TensorFlow server.
+The project also contains its own MobileNetV2 training/evaluation pipeline so the reference checkpoint can later be replaced by a newly trained project checkpoint.
 
-This reduces hosting complexity and response latency for an academic demonstration.
+## 10. Why TensorFlow.js?
 
-## 13. What Is Supabase Used For?
+TensorFlow.js allows deep-learning inference directly inside the browser.
 
-Supabase provides:
+Benefits:
 
-- user authentication
-- persistent sessions
-- PostgreSQL database
+- no separate GPU/ML server required for the demo
+- prediction data can remain in the browser during inference
+- easy Vercel deployment
+- works with converted Keras models
+
+The ML runtime is lazy-loaded only when a scan is requested, which keeps normal application pages faster.
+
+## 11. What Does Confidence Mean?
+
+Confidence is the highest probability in the model's four-class Softmax output.
+
+It tells us how strongly the model prefers one class relative to the others for that image. It is **not medical certainty** and it is not a calibrated probability that the bird definitely has that disease.
+
+## 12. Why Softmax?
+
+Softmax converts four class scores into values between 0 and 1 that sum approximately to 1. This lets the UI display a probability distribution for all four classes.
+
+The deployed checkpoint already ends with a Softmax Dense layer, so the application uses the model output directly rather than applying Softmax a second time.
+
+## 13. Current Performance Numbers
+
+Be precise about which model each number belongs to.
+
+### MobileNetV2 reference checkpoint
+
+The upstream project reports:
+
+- Validation accuracy: **0.90 / 90%**
+- Test accuracy: **0.93 / 93%**
+- Test F1 score: **0.90**
+- Parameters: **2,263,108**
+- Approximate model size reported upstream: **9.13 MB**
+
+These are **upstream-reported experimental metrics**, not a new independent PoultryDetect evaluation.
+
+### Lightweight fallback classifier
+
+Our earlier independently checked fallback classifier achieved approximately **87.4% validation accuracy** on the project validation subset.
+
+Do not say “MobileNetV2 accuracy is 87.4%.”
+
+## 14. How Can We Independently Evaluate MobileNetV2?
+
+The repository contains:
+
+```text
+ml/evaluation/evaluate_mobilenet.py
+```
+
+It can calculate:
+
+- accuracy
+- precision
+- recall
+- F1 score
+- per-class metrics
+- confusion matrix
+
+The exact dataset split must be recorded whenever those results are reported.
+
+## 15. What Is the Fallback Classifier?
+
+The fallback model uses handcrafted image features such as RGB/HSV statistics, histograms, grayscale/gradient information and spatial color blocks, followed by a learned multiclass linear classifier.
+
+It is used only if the TensorFlow.js MobileNetV2 path fails on a device.
+
+## 16. What Is Supabase Used For?
+
+Production Supabase services provide:
+
+- registration/login/logout
+- persistent session
+- PostgreSQL prediction history
 - private image storage
 - Row Level Security
 
-## 14. What Is Row Level Security?
+## 17. What Is Row Level Security?
 
-Row Level Security controls which database rows a logged-in user is allowed to read, insert, or delete.
+Row Level Security restricts database operations according to the authenticated user.
 
-In this project, each user is restricted to their own prediction history.
+In PoultryDetect, users can normally read, insert and delete only their own prediction rows and their own storage objects.
 
-## 15. How Are Images Protected?
+## 18. What Is Stored in History?
 
-Prediction images are stored in a private Supabase Storage bucket. The History page uses temporary signed URLs to display them.
-
-## 16. What Is Stored in Prediction History?
-
-Each history record contains:
+A new scan can store:
 
 - user ID
 - predicted class
 - confidence
 - probabilities
-- image path
+- private image path
+- reported symptoms
+- farm/environment context
+- model name
+- model version
+- inference time
 - date/time
 
-## 17. Why Vercel?
+## 19. Why Save Symptoms and Environment If They Do Not Change the Score?
 
-Vercel is used to host the React/Vite frontend and automatically deploy new versions from GitHub.
+They provide useful screening context for later review, but the current prediction score is produced by the image classifier only.
 
-## 18. Current Accuracy
+This is intentionally stated in the UI so the system does not pretend that symptom selections are part of the trained model when they are not.
 
-The current deployed lightweight classifier is reported in the project UI at approximately **87.4% validation accuracy**.
+## 20. What Is the Node/Express + MongoDB Part?
 
-Say clearly that this is validation-set performance for the project dataset and not veterinary field validation.
+The `server/` folder contains a complete MERN-compatible backend path using:
 
-## 19. Limitations
+- Node.js
+- Express
+- MongoDB
+- Mongoose
+- JWT
 
-Important limitations to mention in viva:
+It supports registration/login plus authenticated prediction-history create/read/delete APIs and an optional external ML-service endpoint.
 
-- image-only classification cannot confirm disease
-- performance may change on unseen farm conditions
-- lighting and camera quality affect images
-- similar diseases can have similar visual appearance
-- current system does not replace veterinary testing
-- the live classifier and MobileNetV2 training module are currently separate implementations
+It is automatically tested using a temporary MongoDB instance.
 
-## 20. Future Scope
+The **current public production database is Supabase PostgreSQL**, not MongoDB, because a production MongoDB Atlas URI has not been configured. Say this clearly if asked; do not claim MongoDB is live when it is not.
 
-- deploy the trained MobileNetV2 model
-- compare MobileNetV2, EfficientNet, and ResNet
-- add confusion matrix and per-class metrics
-- improve dataset diversity
-- add out-of-distribution image detection
+## 21. How Is the Project Tested?
+
+GitHub Actions automatically checks:
+
+- React production build
+- Express + MongoDB smoke test
+- MobileNetV2 model input/output contract
+- presence of model shards, provenance and license
+- Python evaluator syntax
+
+The backend smoke test performs register → login → save history → read history → delete history.
+
+## 22. Important Limitations
+
+- image-only screening cannot confirm a disease
+- real-farm data may differ from training data
+- lighting, blur and background can affect predictions
+- out-of-distribution images can still receive confident predictions
+- Newcastle is comparatively underrepresented in the source data
+- upstream metrics do not guarantee field accuracy
+- veterinary/laboratory confirmation is needed for real treatment decisions
+
+## 23. Future Scope
+
+- train a new project-owned MobileNetV2/EfficientNet checkpoint on the full declared dataset
+- independently evaluate on a held-out test set
+- add out-of-distribution/reject detection
+- add calibrated confidence
+- improve Newcastle class data balance
 - add multilingual farmer guidance
-- add flock analytics and monitoring
+- add flock-level trend analytics
+- connect the MongoDB backend to a production Atlas cluster if MERN deployment is required
 
-## 21. Common Viva Questions
+## 24. Common Viva Questions
 
-### Q: Why did you choose this project?
+### Q: Why did you choose MobileNetV2?
 
-Poultry disease can affect flock health and farm productivity. The project applies image classification to explore a fast, accessible early-screening tool.
+MobileNetV2 is efficient and relatively small compared with many CNN architectures, which makes it practical for web/mobile-oriented inference while still supporting transfer learning.
 
-### Q: Is your system a diagnostic tool?
+### Q: Why run inference in the browser?
 
-No. It is an academic screening aid. Real diagnosis requires a qualified veterinarian and may require laboratory tests.
+It avoids a separate ML server for the live academic demo, reduces backend complexity, and lets us deploy the frontend and converted model through Vercel.
 
-### Q: What happens after the user uploads an image?
+### Q: What happens if MobileNetV2 cannot load?
 
-The image is validated, resized, converted into numerical features, standardized, scored by the model, converted into class probabilities, and the highest-probability class is displayed.
+The application catches the failure and uses the lightweight browser classifier as a fallback. The result identifies which engine actually produced the prediction.
+
+### Q: Is confidence the same as accuracy?
+
+No. Confidence belongs to one prediction. Accuracy measures performance over a labeled dataset containing many samples.
+
+### Q: Is 93% your own test accuracy?
+
+No. 93% is the upstream project's reported test accuracy for the reference MobileNetV2 model. Our repository includes an evaluator for independent testing, and any independently generated result must name the exact dataset split.
 
 ### Q: Where is user data stored?
 
-Authentication is handled by Supabase Auth. Prediction metadata is stored in Supabase PostgreSQL and scan images are stored in a private Supabase Storage bucket.
+In the current live application, authentication is handled by Supabase Auth, prediction metadata is stored in Supabase PostgreSQL, and uploaded images are kept in a private Supabase Storage bucket.
 
-### Q: How do you ensure one user cannot see another user's history?
+### Q: How do you prevent one user seeing another user's scans?
 
-Supabase Row Level Security policies restrict database rows and storage objects using the authenticated user's ID.
+Supabase Row Level Security and user-specific storage paths use the authenticated user ID to restrict access.
 
-### Q: What is the biggest improvement you would make next?
+### Q: Why keep a MongoDB backend if production uses Supabase?
 
-I would fully train, evaluate, and deploy the MobileNetV2 transfer-learning model, then compare it against the current lightweight classifier using a held-out test set and per-class metrics.
+It fulfills and preserves the Node/Express/MongoDB architecture path, is independently smoke-tested, and can be deployed when a production MongoDB connection is configured. Supabase currently provides the already-operational production auth/storage/history infrastructure.
 
-## 22. Demo Order During Presentation
-
-Use this order:
+## 25. Best Demo Order
 
 ```text
-1. Open homepage
-2. Register or Login
+1. Open PoultryDetect
+2. Register / Login
 3. Open Detect
-4. Upload a clear sample image
-5. Show prediction + confidence + probability bars
-6. Explain symptoms/prevention guidance
-7. Open History
-8. Show stored scan and statistics
-9. Download report
-10. Logout
+4. Upload a clear poultry fecal sample
+5. Select optional symptoms/environment
+6. Click Detect Disease
+7. Show prediction, confidence and 4 probability bars
+8. Point out “MobileNetV2 Transfer Learning” and inference time
+9. Explain the veterinary disclaimer
+10. Open History and show saved scan/context
+11. Download report
+12. Logout
 ```
-
-This gives a complete end-to-end demonstration in a short time.
