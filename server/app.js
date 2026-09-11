@@ -35,6 +35,7 @@ app.get("/api/health", (_req, res) => {
     status: "ok",
     service: "PoultryDetect API",
     database: "MongoDB",
+    mongoConfigured: Boolean(process.env.MONGO_URI),
     timestamp: new Date().toISOString(),
   });
 });
