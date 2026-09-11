@@ -8,8 +8,8 @@ const predictRoutes = require("./routes/predict");
 const historyRoutes = require("./routes/history");
 
 const app = express();
-const uploadsDir = path.join(__dirname, "uploads");
-if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+const uploadsDir = process.env.VERCEL ? "/tmp/poultry-uploads" : path.join(__dirname, "uploads");
+fs.mkdirSync(uploadsDir, { recursive: true });
 
 const configuredOrigins = String(process.env.CORS_ORIGIN || "")
   .split(",")
@@ -36,6 +36,7 @@ app.get("/api/health", (_req, res) => {
     service: "PoultryDetect API",
     database: "MongoDB",
     mongoConfigured: Boolean(process.env.MONGO_URI),
+    runtime: process.env.VERCEL ? "vercel-function" : "node",
     timestamp: new Date().toISOString(),
   });
 });
