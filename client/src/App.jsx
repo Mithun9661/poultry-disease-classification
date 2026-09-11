@@ -15,6 +15,7 @@ import "./result.css";
 import "./history-premium.css";
 import "./dashboard.css";
 import "./detector-enhancements.css";
+import "./clinical-context.css";
 import "./navigation.css";
 
 export default function App() {
