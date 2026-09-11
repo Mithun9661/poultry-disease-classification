@@ -11,7 +11,6 @@ async function getModel() {
     modelPromise = (async () => {
       await tf.ready();
       const loaded = await tf.loadLayersModel(MODEL_URL);
-      // Warm up once so the first real scan does not pay the full graph setup cost.
       const warmup = tf.zeros([1, INPUT_SIZE, INPUT_SIZE, 3]);
       const output = loaded.predict(warmup);
       if (Array.isArray(output)) output.forEach((tensor) => tensor.dispose());
@@ -51,10 +50,10 @@ export async function predictWithTransferModel(file) {
   try {
     const rawOutput = model.predict(input);
     const predictionTensor = Array.isArray(rawOutput) ? rawOutput[0] : rawOutput;
-    const probabilitiesTensor = tf.tidy(() => tf.softmax(predictionTensor.squeeze()));
-    const values = Array.from(await probabilitiesTensor.data());
+    // The converted checkpoint ends in Dense(4, activation="softmax"), so its
+    // output is already a probability distribution. Do not apply softmax twice.
+    const values = Array.from(await predictionTensor.data());
 
-    probabilitiesTensor.dispose();
     if (Array.isArray(rawOutput)) rawOutput.forEach((tensor) => tensor.dispose());
     else rawOutput.dispose();
 
@@ -78,7 +77,7 @@ export async function predictWithTransferModel(file) {
       probabilities,
       modelName: "MobileNetV2 Transfer Learning",
       modelVersion: "reference-mobilenetv2-tl-v1",
-      inferenceEngine: "tensorflowjs",
+      inferenceEngine: "TensorFlow.js",
     };
   } finally {
     input.dispose();
