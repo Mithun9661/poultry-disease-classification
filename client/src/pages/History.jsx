@@ -36,7 +36,7 @@ export default function History() {
         setLoading(true);
         const { data, error: queryError } = await supabase
           .from("predictions")
-          .select("id,predicted_class,confidence,probabilities,image_path,reported_symptoms,environment,created_at")
+          .select("id,predicted_class,confidence,probabilities,image_path,reported_symptoms,environment,model_name,model_version,inference_ms,created_at")
           .order("created_at", { ascending: false });
 
         if (queryError) throw queryError;
@@ -77,7 +77,8 @@ export default function History() {
     return predictions.filter((item) => {
       const filterMatch = filter === "All" || item.predicted_class === filter;
       const symptomText = (item.reported_symptoms || []).map((value) => symptomLabels[value] || value).join(" ").toLowerCase();
-      const searchMatch = !text || item.predicted_class.toLowerCase().includes(text) || symptomText.includes(text);
+      const modelText = `${item.model_name || ""} ${item.model_version || ""}`.toLowerCase();
+      const searchMatch = !text || item.predicted_class.toLowerCase().includes(text) || symptomText.includes(text) || modelText.includes(text);
       return filterMatch && searchMatch;
     });
   }, [predictions, filter, query]);
@@ -138,7 +139,7 @@ export default function History() {
           <div>
             <span className="history-eyebrow">AI SCREENING RECORDS</span>
             <h1>Scan history</h1>
-            <p>Review your saved poultry disease screening results, confidence scores, symptoms and farm context.</p>
+            <p>Review your saved poultry disease screening results, confidence scores, symptoms, model runtime and farm context.</p>
           </div>
           <button className="history-new-scan" onClick={() => navigate("/predict")}>+ New scan</button>
         </div>
@@ -172,7 +173,7 @@ export default function History() {
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search disease or symptom..."
+              placeholder="Search disease, symptom or model..."
               aria-label="Search scan history"
             />
           </div>
@@ -236,6 +237,7 @@ export default function History() {
                     </div>
 
                     <p className="history-card-date">{formatDate(item.created_at)}</p>
+                    {item.model_name && <p className="history-card-date">Model: {item.model_name}{item.inference_ms ? ` · ${item.inference_ms} ms` : ""}</p>}
                     {contextCount > 0 && <p className="history-card-date">{contextCount} reported symptom{contextCount === 1 ? "" : "s"}</p>}
 
                     <div className="history-card-actions">
@@ -273,6 +275,15 @@ export default function History() {
                 <span>Prediction confidence</span>
                 <strong>{Math.round(selected.confidence * 100)}%</strong>
               </div>
+
+              {selected.model_name && (
+                <div className={`model-runtime-strip ${selected.model_name.includes("MobileNetV2") ? "transfer" : "fallback"}`}>
+                  <span>{selected.model_name.includes("MobileNetV2") ? "Transfer learning" : "Fallback"}</span>
+                  <strong>{selected.model_name}</strong>
+                  <small>{selected.model_version || "model version unavailable"}{selected.inference_ms ? ` · ${selected.inference_ms} ms` : ""}</small>
+                </div>
+              )}
+
               <div className="history-modal-probabilities">
                 {Object.entries(selected.probabilities || {})
                   .sort((a, b) => b[1] - a[1])
