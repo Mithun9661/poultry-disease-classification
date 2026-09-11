@@ -1,0 +1,9 @@
+Model: MobileNetV2 transfer-learning poultry classifier
+Classes/order: Coccidiosis, Healthy, NewCastleDisease, Salmonella
+Input: RGB image resized to 128x128 and normalized to [0,1]
+Upstream checkpoint: https://github.com/Saeed-dev2/poultry_Form_Disease_Deep-Learning-Machine-Learning-Computer-vision/blob/main/model/mobilenetV2/mobilenetv2.h5
+Upstream repository license: MIT
+Upstream copyright: Copyright (c) 2025 Muhammad Saeed
+Dataset lineage described upstream: AI4D poultry fecal images / Zenodo 4628934 and 5801834
+Conversion: Keras H5 -> TensorFlow.js Layers format for browser inference
+Note: This is an attributed reference checkpoint. The repository also contains its own MobileNetV2 training pipeline for retraining/replacement.
