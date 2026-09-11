@@ -10,9 +10,12 @@ const Prediction = require("../models/Prediction");
 const diseaseInfo = require("../config/diseaseInfo");
 
 const router = express.Router();
+const isServerless = Boolean(process.env.VERCEL);
+const uploadsDir = isServerless ? "/tmp/poultry-uploads" : path.join(__dirname, "..", "uploads");
+fs.mkdirSync(uploadsDir, { recursive: true });
 
 const upload = multer({
-  dest: path.join(__dirname, "..", "uploads"),
+  dest: uploadsDir,
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     const allowed = ["image/jpeg", "image/png", "image/jpg"];
@@ -55,7 +58,9 @@ router.post("/", requireAuth, upload.single("image"), async (req, res) => {
     }
 
     const info = diseaseInfo[predicted_class] || {};
-    const imageUrl = `/uploads/${req.file.filename}`;
+    // Vercel Functions have ephemeral /tmp storage, so do not persist a temporary
+    // file URL there. The live frontend stores durable scan images in Supabase Storage.
+    const imageUrl = isServerless ? "" : `/uploads/${req.file.filename}`;
     const inferenceMs = Math.max(1, Date.now() - startedAt);
 
     const prediction = await Prediction.create({
@@ -71,7 +76,7 @@ router.post("/", requireAuth, upload.single("image"), async (req, res) => {
       source: "ml-service",
     });
 
-    keepUploadedImage = true;
+    keepUploadedImage = !isServerless;
     res.status(201).json({
       prediction: {
         id: prediction._id,
