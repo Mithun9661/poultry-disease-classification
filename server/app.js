@@ -31,11 +31,15 @@ app.use(express.json({ limit: "1mb" }));
 app.use("/uploads", express.static(uploadsDir));
 
 app.get("/api/health", (_req, res) => {
+  const mongoConfigured = Boolean(process.env.MONGO_URI);
+  const jwtConfigured = Boolean(process.env.JWT_SECRET);
   res.json({
     status: "ok",
     service: "PoultryDetect API",
     database: "MongoDB",
-    mongoConfigured: Boolean(process.env.MONGO_URI),
+    mongoConfigured,
+    jwtConfigured,
+    persistentApiReady: mongoConfigured && jwtConfigured,
     runtime: process.env.VERCEL ? "vercel-function" : "node",
     timestamp: new Date().toISOString(),
   });
