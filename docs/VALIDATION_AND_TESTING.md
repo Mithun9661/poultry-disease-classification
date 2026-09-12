@@ -6,7 +6,7 @@ This document separates three different kinds of evidence so that academic claim
 
 1. **Independent project validation** of the earlier lightweight fallback classifier.
 2. **Upstream-reported metrics** for the attributed MobileNetV2 transfer-learning checkpoint used by the live app.
-3. **Production engineering tests** for build integrity, API behavior, model contract, deployment and runtime metadata.
+3. **Production engineering tests** for build integrity, API behavior, authorization, model contract, deployment and runtime metadata.
 
 No veterinary or clinical validation is claimed.
 
@@ -141,7 +141,7 @@ This catches accidental replacement by an incompatible model before the applicat
 
 After TensorFlow.js was changed to dynamic import, the Vercel production build separated the normal app bundle from the ML runtime.
 
-Observed production build output:
+Observed production build output from that optimization stage:
 
 | Asset | Approx. minified size | Approx. gzip size | Loading behavior |
 |---|---:|---:|---|
@@ -163,7 +163,7 @@ Each prediction result records or can display:
 modelName
 modelVersion
 inferenceMs
-usedFallback
+usedFallback (runtime UI state)
 ```
 
 This makes it possible to distinguish:
@@ -175,17 +175,24 @@ Inference time is measured in the user's browser and therefore varies by device,
 
 ---
 
-## 8. Node/Express/MongoDB Backend Tests
+## 8. Express + MongoDB Security and CRUD Tests
 
-The backend smoke test uses an isolated temporary MongoDB instance and verifies the complete authenticated history lifecycle:
+The backend smoke test uses an isolated temporary MongoDB instance and verifies the core authenticated lifecycle and authorization boundaries:
 
 1. `/api/health` returns a valid service response.
-2. User registration creates a MongoDB user and JWT.
-3. Login validates credentials and returns a JWT.
-4. Authenticated history POST stores a prediction.
-5. Stored model metadata is retrieved correctly.
-6. Authenticated history DELETE removes only the user's matching record.
-7. A follow-up history GET confirms deletion.
+2. Unauthenticated history access is rejected with `401`.
+3. Invalid registration input is rejected.
+4. Registration creates a MongoDB user and JWT.
+5. Duplicate registration is rejected.
+6. Wrong-password login is rejected.
+7. Login validates credentials and returns a JWT.
+8. `/api/auth/me` verifies the authenticated session.
+9. Invalid prediction-history payloads are rejected.
+10. Authenticated history POST stores a prediction with model/context metadata.
+11. History GET returns the authenticated user's record.
+12. A second user cannot delete the first user's record.
+13. The owner can delete the record.
+14. A follow-up GET confirms deletion.
 
 Command:
 
@@ -195,44 +202,88 @@ npm install
 npm test
 ```
 
-This test does not require access to a real production MongoDB Atlas cluster.
+The CI test uses `mongodb-memory-server` so it is reproducible without modifying production data. The deployed production API separately uses MongoDB Atlas.
 
 ---
 
-## 9. Application-Level Functional Checks
+## 9. Production API Checks
 
-The implemented application supports the following test cases:
+The live Vercel API has been checked for these behaviors:
 
-| Area | Expected behavior |
+| Check | Observed result |
 |---|---|
-| Registration | New user can create an account |
-| Login | Valid user receives persistent authenticated session |
-| Protected routes | Detector/history require authentication |
-| Upload validation | Unsupported types and oversized images are rejected |
-| Image quality hint | Very small or unusually narrow images receive a warning |
-| Prediction | Four-class probability output is shown |
-| Model provenance | Result identifies the engine used |
-| Low confidence | UI warns when confidence is below threshold |
-| History save | Prediction metadata and private image are stored |
-| History privacy | Supabase RLS limits rows/storage to the authenticated user |
-| History filtering | User can filter/search previous scans |
-| Delete | User can remove a stored scan |
-| Report | Screening report can be downloaded |
-| Direct routes | Vercel SPA routes load correctly |
+| `/api/health` | HTTP 200 |
+| MongoDB configured | `true` |
+| JWT configured | `true` |
+| Persistent API ready | `true` |
+| `/api/history` without JWT | HTTP 401 |
+| API cache policy | `no-store` |
+| General rate limiting | active; rate-limit headers returned |
+| Helmet security headers | present |
+
+These checks verify deployment/readiness and unauthenticated protection. They are not a substitute for a full automated browser test across every device/browser.
 
 ---
 
-## 10. Interpretation Rules for Report and Viva
+## 10. Application-Level Functional Checks
+
+| Area | Expected behavior / evidence |
+|---|---|
+| Registration | Express validates input; MongoDB account is created |
+| Login | bcrypt credentials are checked and a signed JWT is returned |
+| Session restore | `/api/auth/me` verifies the stored JWT |
+| Protected routes/API | History requires authentication |
+| Upload validation | Unsupported types and oversized images are rejected in the UI |
+| Image quality hint | Small/unusually narrow images receive a warning |
+| Prediction | Four-class probability output is shown |
+| Model provenance | Result identifies the inference engine used |
+| Low confidence | UI warns when confidence is below threshold |
+| History save | Prediction, context and compressed preview are stored in MongoDB |
+| History privacy | Server queries are scoped to the authenticated MongoDB user |
+| Cross-user delete | Tested and rejected |
+| History filtering | User can filter/search previous scans |
+| Delete | Owner can remove a stored scan |
+| Report | Screening report can be downloaded |
+| Legacy data | Matching-email legacy Supabase metadata can be claimed into MongoDB |
+| Direct routes | Vercel SPA routing remains configured |
+
+---
+
+## 11. Security Controls Covered by the Audit
+
+Current production/API hardening includes:
+
+- bcrypt password hashes
+- password field excluded from normal Mongoose queries
+- HS256-pinned JWT signing/verification
+- auth-specific rate limiting
+- general API rate limiting
+- Helmet response headers
+- explicit production CORS allowlist
+- JSON/body-size limits
+- auth-field validation
+- prediction/class/probability/symptom/environment validation
+- authenticated user scoping for history operations
+- Vercel browser security headers
+- `.env` and build artifacts excluded via repository `.gitignore`
+
+One remaining security-operational step is to rotate deployment secrets that were exposed during interactive setup before treating the project as frozen for final submission.
+
+---
+
+## 12. Interpretation Rules for Report and Viva
 
 Safe statements:
 
 - “The production application uses an attributed MobileNetV2 transfer-learning checkpoint through TensorFlow.js.”
 - “The upstream project reports 90% validation accuracy and 93% test accuracy for the selected MobileNetV2 transfer-learning model.”
 - “Our earlier independently tested fallback classifier achieved about 87.4% on the project validation subset.”
-- “The application records model name and inference time for each new scan.”
+- “The live backend uses Node.js, Express, JWT and MongoDB Atlas.”
+- “Automated tests verify authentication, history CRUD and cross-user isolation.”
 
 Statements to avoid:
 
 - “Our team trained the exact production MobileNetV2 checkpoint” — this is not true for the current reference checkpoint.
 - “The model is 93% accurate on all farms” — upstream test accuracy does not establish field/general clinical accuracy.
 - “The output is a veterinary diagnosis” — it is an academic screening result.
+- “Every browser/device interaction has been fully automated and verified” — current evidence includes CI/API/deployment checks, not exhaustive browser automation.
