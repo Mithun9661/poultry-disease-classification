@@ -2,28 +2,30 @@
 
 ## 1. Current Production Architecture
 
-The live application is browser-first and uses MobileNetV2 transfer learning for primary inference:
-
 ```mermaid
 flowchart LR
-    U[User Browser] --> UI[React + Vite UI]
-    UI --> AUTH[Supabase Auth]
+    U[User Browser] --> UI[React + Vite]
+    UI --> API[Express API on Vercel]
+    API --> AUTH[bcrypt + JWT]
+    API --> DB[(MongoDB Atlas)]
     UI --> TFJS[TensorFlow.js]
-    TFJS --> M[MobileNetV2 Transfer-Learning Model]
+    TFJS --> M[MobileNetV2 Transfer Learning]
+    TFJS -. load failure .-> F[Lightweight Fallback]
     M --> UI
-    TFJS -. load failure .-> F[Lightweight Fallback Classifier]
     F --> UI
-    UI --> DB[(Supabase PostgreSQL)]
-    UI --> ST[Supabase Storage]
-    DB --> H[History Dashboard]
-    ST --> H
-    UI --> V[Vercel]
+    UI --> API
 ```
 
-The production site is available at:
+Production URL:
 
 ```text
 https://poultry-disease-classification.vercel.app
+```
+
+API health:
+
+```text
+https://poultry-disease-classification.vercel.app/api/health
 ```
 
 ## 2. React Frontend
@@ -31,18 +33,18 @@ https://poultry-disease-classification.vercel.app
 Responsibilities:
 
 - registration/login UI and protected routes
-- image upload, preview and validation
+- dashboard and user navigation
+- image upload, camera capture, preview and validation
 - optional flock symptoms and farm-environment context
 - MobileNetV2 TensorFlow.js inference
-- fallback inference when MobileNetV2 cannot load
+- fallback inference if MobileNetV2 cannot load
 - prediction confidence and class-probability visualization
-- disease information and next-step guidance
-- downloadable screening report
-- scan history, filtering and deletion
+- disease guidance and downloadable report
+- authenticated history search/filter/details/delete
+
+The frontend communicates with the backend through same-origin `/api/*` requests.
 
 ## 3. Production ML Layer
-
-Primary files:
 
 ```text
 client/src/ml/browserModel.js        # MobileNetV2-first orchestrator
@@ -58,161 +60,128 @@ sequenceDiagram
     participant User
     participant React
     participant TFJS as TensorFlow.js
-    participant M as MobileNetV2
-    participant F as Fallback Model
-    participant DB as Supabase
+    participant Model as MobileNetV2
+    participant API as Express API
+    participant DB as MongoDB Atlas
 
-    User->>React: Select poultry sample image
-    React->>React: Validate type, size and basic image quality
+    User->>React: Select/capture poultry sample
+    React->>React: Validate type, size and basic quality
     User->>React: Detect Disease
     React->>TFJS: Lazy-load runtime
-    TFJS->>M: Resize to 128x128, normalize to [0,1]
-    alt MobileNetV2 loads successfully
-        M-->>React: 4-class Softmax probabilities
-    else model/runtime failure
-        React->>F: Run lightweight browser classifier
-        F-->>React: 4-class probabilities
-    end
-    React-->>User: Result + confidence + model name + inference time
-    React->>DB: Save scan metadata/history
+    TFJS->>Model: Resize 128x128 and normalize to [0,1]
+    Model-->>React: 4-class Softmax probabilities
+    React-->>User: Result + confidence + model metadata
+    React->>API: Save result + symptoms + environment + preview
+    API->>DB: Store authenticated prediction record
+    DB-->>API: Saved record
+    API-->>React: Confirmation
 ```
 
-## 4. Production Data and Authentication
+If the transfer model cannot load, `browserModel.js` uses the lightweight fallback and marks the result accordingly.
 
-### Supabase Auth
+## 4. Authentication and Data Layer
 
-Handles:
+### Authentication
 
-- account registration
-- login/logout
-- persistent sessions
-- user identity
+The live application uses:
 
-### Supabase PostgreSQL
+- Express authentication endpoints
+- bcrypt password hashing
+- signed JWT access tokens
+- authenticated `/api/auth/me` session verification
 
-The production `predictions` table stores fields including:
+Passwords are stored only as bcrypt hashes and are excluded from normal Mongoose queries.
+
+### MongoDB Atlas
+
+Primary collections include:
 
 ```text
-id
-user_id
-predicted_class
-confidence
-probabilities
-image_path
-reported_symptoms
-environment
-model_name
-model_version
-inference_ms
-created_at
+users
+predictions
+disease_info
+legacy_predictions
 ```
 
-### Supabase Storage
+Each prediction references its owner. History reads and deletes always include the authenticated MongoDB user ID in the query, preventing one account from operating on another account's records.
 
-Private bucket:
+`predictions` stores class/confidence/probabilities, model metadata, symptoms, environment and a compressed image preview.
 
-```text
-prediction-images
-```
+### Legacy migration
 
-User-specific storage paths plus Row Level Security keep prediction data isolated by account. History images are rendered using time-limited signed URLs.
+Earlier versions used Supabase. Old prediction metadata was copied to `legacy_predictions`. When an account with the matching email registers/logs in, those records are idempotently claimed into the MongoDB `predictions` collection. Supabase is no longer a runtime dependency of the final frontend.
 
-## 5. Node/Express + MongoDB Backend
-
-The repository also contains a complete Node/Express/MongoDB backend implementation under:
-
-```text
-server/
-```
-
-It is retained as the project's MERN-compatible backend path and now includes:
-
-- MongoDB connection management with Mongoose
-- JWT registration/login
-- authenticated prediction history APIs
-- create/read/delete history lifecycle
-- model name/version/inference-time fields
-- symptoms and environment fields matching the live UI
-- optional external ML-service prediction endpoint
-- image upload validation
-- configurable CORS
-- automated MongoDB smoke testing with `mongodb-memory-server`
-
-API surface:
+## 5. Express API
 
 ```text
 GET    /api/health
 POST   /api/auth/register
 POST   /api/auth/login
+GET    /api/auth/me
 GET    /api/history
 POST   /api/history
 DELETE /api/history/:id
 POST   /api/predict
 ```
 
-The MongoDB backend is **code-complete and CI-testable**, but the current public Vercel application continues to use Supabase for operational cloud auth/history because no production MongoDB Atlas connection URI is stored in this repository or deployment configuration.
+The API is exposed through `api/index.js` as a Vercel Function and connects to MongoDB Atlas using `MONGO_URI`.
 
-This distinction is deliberate: the project does not claim that MongoDB is the live production database until a real `MONGO_URI` is configured.
+## 6. Security Controls
 
-## 6. Backend Smoke-Test Architecture
+- bcrypt password hashing
+- HS256 JWT verification
+- password exclusion from normal queries
+- auth-specific and general API rate limiting
+- Helmet response headers
+- explicit CORS allowlist
+- JSON/body-size limits
+- auth input validation
+- prediction payload validation
+- user-scoped history queries/deletes
+- static browser security headers in `vercel.json`
+- deployment secrets stored in environment variables, not GitHub
 
-The backend test starts an isolated temporary MongoDB instance and verifies:
+## 7. Backend Smoke-Test Architecture
 
-```text
-Health endpoint
-   ↓
-Register user
-   ↓
-Login and receive JWT
-   ↓
-Create prediction-history record
-   ↓
-Read history
-   ↓
-Verify model metadata
-   ↓
-Delete history record
-   ↓
-Confirm history is empty
-```
-
-Run locally:
-
-```bash
-cd server
-npm install
-npm test
-```
-
-## 7. CI Quality Gates
-
-GitHub Actions workflow:
+`server/smoke_test.js` launches a temporary MongoDB instance and verifies:
 
 ```text
-.github/workflows/quality_checks.yml
+Health
+  ↓
+Unauthorized history is rejected
+  ↓
+Invalid registration is rejected
+  ↓
+Register
+  ↓
+Duplicate registration is rejected
+  ↓
+Wrong-password login is rejected
+  ↓
+Login + JWT
+  ↓
+Session verification
+  ↓
+Create/read prediction history
+  ↓
+Second user cannot delete first user's record
+  ↓
+Owner deletes record
 ```
 
-Checks:
+## 8. CI Quality Gates
+
+`.github/workflows/quality_checks.yml` verifies:
 
 1. React/Vite production build
-2. Express + MongoDB smoke test
+2. Express + MongoDB security/CRUD smoke test
 3. MobileNetV2 TensorFlow.js model contract
-4. Python evaluation-script syntax
+4. Python evaluator syntax
 
-The model-contract job verifies that the production web model has a 128×128×3 input, four output units, Softmax activation, non-empty weight shards, provenance and upstream license files.
+The ML contract verifies a 128×128×3 input, four Softmax outputs, model shards, provenance and upstream license files.
 
-## 8. Model Evaluation Path
+## 9. Model Evaluation Path
 
-Reproducible evaluator:
+`ml/evaluation/evaluate_mobilenet.py` can generate accuracy, precision, recall, F1, per-class metrics and a confusion matrix from a declared dataset split.
 
-```text
-ml/evaluation/evaluate_mobilenet.py
-```
-
-It can generate accuracy, precision, recall, F1, per-class metrics and confusion matrix outputs from a declared validation/test directory.
-
-See:
-
-```text
-docs/MODEL_CARD.md
-```
+See `docs/MODEL_CARD.md` and `docs/VALIDATION_AND_TESTING.md` for metric interpretation and limitations.
