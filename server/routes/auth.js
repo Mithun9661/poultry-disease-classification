@@ -2,9 +2,54 @@ const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
+const Prediction = require("../models/Prediction");
+const LegacyPrediction = require("../models/LegacyPrediction");
 const requireAuth = require("../middleware/auth");
 
 const router = express.Router();
+
+async function claimLegacyPredictions(user) {
+  const email = String(user.email || "").trim().toLowerCase();
+  if (!email) return 0;
+
+  const legacyRows = await LegacyPrediction.find({ email }).lean();
+  if (!legacyRows.length) return 0;
+
+  const operations = legacyRows.map((row) => ({
+    updateOne: {
+      filter: { legacySourceId: row.legacySourceId },
+      update: {
+        $setOnInsert: {
+          user: user._id,
+          imageUrl: "",
+          predictedClass: row.predictedClass,
+          confidence: row.confidence,
+          allProbabilities: row.allProbabilities || {},
+          treatmentSuggestion: "",
+          reportedSymptoms: row.reportedSymptoms || [],
+          environment: row.environment || {},
+          modelName: row.modelName || "",
+          modelVersion: row.modelVersion || "",
+          inferenceMs: row.inferenceMs == null ? null : row.inferenceMs,
+          source: "legacy-supabase",
+          legacySourceId: row.legacySourceId,
+          legacyImagePath: row.legacyImagePath || "",
+          createdAt: row.originalCreatedAt,
+          updatedAt: row.originalCreatedAt,
+        },
+      },
+      upsert: true,
+    },
+  }));
+
+  await Prediction.collection.bulkWrite(operations, { ordered: false });
+  await LegacyPrediction.deleteMany({
+    email,
+    legacySourceId: { $in: legacyRows.map((row) => row.legacySourceId) },
+  });
+
+  return legacyRows.length;
+}
 
 router.post("/register", async (req, res) => {
   try {
@@ -31,10 +76,12 @@ router.post("/register", async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
     const user = await User.create({ name: cleanName, email: cleanEmail, password: hashedPassword });
+    const migratedHistory = await claimLegacyPredictions(user);
     const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: "7d" });
 
     res.status(201).json({
       token,
+      migratedHistory,
       user: { id: user._id, name: user.name, email: user.email },
     });
   } catch (err) {
@@ -61,8 +108,13 @@ router.post("/login", async (req, res) => {
       return res.status(401).json({ message: "Invalid email or password." });
     }
 
+    const migratedHistory = await claimLegacyPredictions(user);
     const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: "7d" });
-    res.json({ token, user: { id: user._id, name: user.name, email: user.email } });
+    res.json({
+      token,
+      migratedHistory,
+      user: { id: user._id, name: user.name, email: user.email },
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Server error during login." });
@@ -71,11 +123,15 @@ router.post("/login", async (req, res) => {
 
 router.get("/me", requireAuth, async (req, res) => {
   try {
-    const user = await User.findById(req.userId).select("name email").lean();
+    const user = await User.findById(req.userId).select("name email");
     if (!user) {
       return res.status(401).json({ message: "Account no longer exists." });
     }
-    res.json({ user: { id: user._id, name: user.name, email: user.email } });
+    const migratedHistory = await claimLegacyPredictions(user);
+    res.json({
+      migratedHistory,
+      user: { id: user._id, name: user.name, email: user.email },
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Could not load account session." });
