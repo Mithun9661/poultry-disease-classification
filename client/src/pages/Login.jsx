@@ -15,7 +15,7 @@ function Icon({ type }) {
 }
 
 export default function Login() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, login, register } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -31,16 +31,34 @@ export default function Login() {
     setError("");
     setLoading(true);
 
+    const cleanEmail = email.trim().toLowerCase();
     try {
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: email.trim().toLowerCase(),
-        password,
-      });
-      if (signInError) throw signInError;
+      await login(cleanEmail, password);
       navigate("/dashboard", { replace: true });
-    } catch (err) {
-      const message = err?.message || "Login failed. Please try again.";
-      setError(message.toLowerCase().includes("invalid login") ? "Incorrect email or password. Please try again." : message);
+      return;
+    } catch (mongoError) {
+      if (mongoError?.status !== 401) {
+        setError(mongoError?.message || "Login failed. Please try again.");
+        setLoading(false);
+        return;
+      }
+
+      // One-time compatibility path for accounts created before the MongoDB migration.
+      try {
+        const { data, error: legacyError } = await supabase.auth.signInWithPassword({ email: cleanEmail, password });
+        if (legacyError || !data?.user) throw legacyError || new Error("Invalid login");
+
+        const legacyName = data.user.user_metadata?.full_name || data.user.user_metadata?.name || cleanEmail.split("@")[0];
+        try {
+          await register(legacyName, cleanEmail, password);
+        } finally {
+          await supabase.auth.signOut();
+        }
+        navigate("/dashboard", { replace: true });
+      } catch (legacyMigrationError) {
+        const message = legacyMigrationError?.message || "Incorrect email or password. Please try again.";
+        setError(message.toLowerCase().includes("invalid") ? "Incorrect email or password. Please try again." : message);
+      }
     } finally {
       setLoading(false);
     }
@@ -53,85 +71,38 @@ export default function Login() {
           <div className="auth-story-copy">
             <div className="auth-kicker">WELCOME BACK</div>
             <h1>Continue your poultry disease screening.</h1>
-            <p className="auth-story-lead">
-              Use your registered email and password to open the detector from any device. Your cloud account keeps access secure and available wherever you work.
-            </p>
+            <p className="auth-story-lead">Use your registered email and password to open the detector from any device. Your account is protected by the PoultryDetect Express API and MongoDB-backed authentication.</p>
 
             <div className="auth-feature-list">
-              <div className="auth-feature">
-                <span className="auth-feature-icon"><Icon type="cloud" /></span>
-                <div><strong>Cloud account</strong><small>Your account stays securely available online.</small></div>
-              </div>
-              <div className="auth-feature">
-                <span className="auth-feature-icon gold"><Icon type="shield" /></span>
-                <div><strong>Secure access</strong><small>Protected with Supabase authentication.</small></div>
-              </div>
-              <div className="auth-feature">
-                <span className="auth-feature-icon teal"><Icon type="devices" /></span>
-                <div><strong>Cross-device login</strong><small>Use the same account on laptop or mobile.</small></div>
-              </div>
+              <div className="auth-feature"><span className="auth-feature-icon"><Icon type="cloud" /></span><div><strong>Persistent account</strong><small>Your account and scan history are stored in MongoDB Atlas.</small></div></div>
+              <div className="auth-feature"><span className="auth-feature-icon gold"><Icon type="shield" /></span><div><strong>Secure access</strong><small>Passwords are hashed and sessions use signed JWT tokens.</small></div></div>
+              <div className="auth-feature"><span className="auth-feature-icon teal"><Icon type="devices" /></span><div><strong>Cross-device login</strong><small>Use the same account on laptop or mobile.</small></div></div>
             </div>
 
             <div className="auth-slogan">Healthier Birds · Brighter Tomorrows</div>
           </div>
 
           <div className="auth-visual" aria-hidden="true">
-            <div className="scan-brackets" />
-            <div className="scan-line" />
-            <div className="analysis-hud">
-              <div className="analysis-hud-title">AI ANALYSIS</div>
-              <ul>
-                <li>Healthy</li>
-                <li>Coccidiosis</li>
-                <li>Salmonella</li>
-                <li>Newcastle</li>
-              </ul>
-            </div>
+            <div className="scan-brackets" /><div className="scan-line" />
+            <div className="analysis-hud"><div className="analysis-hud-title">AI ANALYSIS</div><ul><li>Healthy</li><li>Coccidiosis</li><li>Salmonella</li><li>Newcastle</li></ul></div>
             <div className="scan-caption">SCAN · ANALYZE · PROTECT</div>
           </div>
         </div>
 
         <div className="auth-panel-premium">
           <div className="auth-card-premium">
-            <div className="auth-card-brand">
-              <span className="auth-card-brand-mark"><Icon /></span>
-              <span className="auth-card-brand-copy">
-                <strong>PoultryDetect</strong>
-                <small>POULTRY HEALTH · SMARTER TOMORROWS</small>
-              </span>
-            </div>
-
+            <div className="auth-card-brand"><span className="auth-card-brand-mark"><Icon /></span><span className="auth-card-brand-copy"><strong>PoultryDetect</strong><small>POULTRY HEALTH · SMARTER TOMORROWS</small></span></div>
             <h2>Log in to PoultryDetect</h2>
-            <p className="auth-card-subtitle">Enter the credentials linked to your cloud account to access your poultry health workspace.</p>
-
+            <p className="auth-card-subtitle">Enter your credentials to access your MongoDB-backed poultry health workspace.</p>
             {error && <div className="auth-error-premium">{error}</div>}
 
             <form onSubmit={handleSubmit}>
-              <div className="premium-field">
-                <label htmlFor="email">Email address</label>
-                <div className="premium-input-wrap">
-                  <Icon type="mail" />
-                  <input id="email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" required />
-                </div>
-              </div>
-
-              <div className="premium-field">
-                <label htmlFor="password">Password</label>
-                <div className="premium-input-wrap">
-                  <Icon type="lock" />
-                  <input id="password" type={showPassword ? "text" : "password"} autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter your password" required />
-                  <button type="button" className="password-toggle" onClick={() => setShowPassword((v) => !v)} aria-label={showPassword ? "Hide password" : "Show password"}>
-                    <Icon type="eye" />
-                  </button>
-                </div>
-              </div>
-
-              <button className="premium-auth-button" type="submit" disabled={loading}>
-                <span>{loading ? "Logging in…" : "Log in"}</span><span>→</span>
-              </button>
+              <div className="premium-field"><label htmlFor="email">Email address</label><div className="premium-input-wrap"><Icon type="mail" /><input id="email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" required /></div></div>
+              <div className="premium-field"><label htmlFor="password">Password</label><div className="premium-input-wrap"><Icon type="lock" /><input id="password" type={showPassword ? "text" : "password"} autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter your password" required /><button type="button" className="password-toggle" onClick={() => setShowPassword((v) => !v)} aria-label={showPassword ? "Hide password" : "Show password"}><Icon type="eye" /></button></div></div>
+              <button className="premium-auth-button" type="submit" disabled={loading}><span>{loading ? "Logging in…" : "Log in"}</span><span>→</span></button>
             </form>
 
-            <div className="auth-security-note">🔒 Secure cloud authentication with Supabase</div>
+            <div className="auth-security-note">🔒 Express + MongoDB Atlas · bcrypt + JWT</div>
             <p className="auth-switch-premium">Don't have an account? <Link to="/register">Create an account</Link></p>
           </div>
         </div>
