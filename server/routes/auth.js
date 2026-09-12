@@ -7,9 +7,26 @@ const LegacyPrediction = require("../models/LegacyPrediction");
 const requireAuth = require("../middleware/auth");
 
 const router = express.Router();
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function signToken(userId) {
+  return jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: "7d" });
+}
+
+function normalizeEmail(email) {
+  return String(email || "").trim().toLowerCase();
+}
+
+function validateEmail(email) {
+  return email.length <= 254 && EMAIL_RE.test(email);
+}
+
+function validatePassword(password) {
+  return typeof password === "string" && password.length >= 6 && password.length <= 128;
+}
 
 async function claimLegacyPredictions(user) {
-  const email = String(user.email || "").trim().toLowerCase();
+  const email = normalizeEmail(user.email);
   if (!email) return 0;
 
   const legacyRows = await LegacyPrediction.find({ email }).lean();
@@ -53,52 +70,54 @@ async function claimLegacyPredictions(user) {
 
 router.post("/register", async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password } = req.body || {};
+    const cleanEmail = normalizeEmail(email);
+    const cleanName = String(name || "").trim();
 
-    if (!name || !email || !password) {
-      return res.status(400).json({ message: "Name, email, and password are all required." });
+    if (cleanName.length < 2 || cleanName.length > 80) {
+      return res.status(400).json({ message: "Name must be between 2 and 80 characters." });
     }
-    if (password.length < 6) {
-      return res.status(400).json({ message: "Password must be at least 6 characters." });
+    if (!validateEmail(cleanEmail)) {
+      return res.status(400).json({ message: "Please enter a valid email address." });
     }
-
-    const cleanEmail = String(email).trim().toLowerCase();
-    const cleanName = String(name).trim();
-    if (!cleanName) {
-      return res.status(400).json({ message: "Name is required." });
+    if (!validatePassword(password)) {
+      return res.status(400).json({ message: "Password must be between 6 and 128 characters." });
     }
 
-    const existingUser = await User.findOne({ email: cleanEmail });
+    const existingUser = await User.findOne({ email: cleanEmail }).select("_id").lean();
     if (existingUser) {
       return res.status(409).json({ message: "An account with this email already exists." });
     }
 
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
+    const hashedPassword = await bcrypt.hash(password, 10);
     const user = await User.create({ name: cleanName, email: cleanEmail, password: hashedPassword });
     const migratedHistory = await claimLegacyPredictions(user);
-    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: "7d" });
+    const token = signToken(user._id);
 
-    res.status(201).json({
+    return res.status(201).json({
       token,
       migratedHistory,
       user: { id: user._id, name: user.name, email: user.email },
     });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error during registration." });
+    if (err?.code === 11000) {
+      return res.status(409).json({ message: "An account with this email already exists." });
+    }
+    console.error("Registration error:", err.message);
+    return res.status(500).json({ message: "Server error during registration." });
   }
 });
 
 router.post("/login", async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password } = req.body || {};
+    const cleanEmail = normalizeEmail(email);
 
-    if (!email || !password) {
-      return res.status(400).json({ message: "Email and password are required." });
+    if (!validateEmail(cleanEmail) || !validatePassword(password)) {
+      return res.status(401).json({ message: "Invalid email or password." });
     }
 
-    const user = await User.findOne({ email: String(email).trim().toLowerCase() });
+    const user = await User.findOne({ email: cleanEmail }).select("+password name email");
     if (!user) {
       return res.status(401).json({ message: "Invalid email or password." });
     }
@@ -109,15 +128,15 @@ router.post("/login", async (req, res) => {
     }
 
     const migratedHistory = await claimLegacyPredictions(user);
-    const token = jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: "7d" });
-    res.json({
+    const token = signToken(user._id);
+    return res.json({
       token,
       migratedHistory,
       user: { id: user._id, name: user.name, email: user.email },
     });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error during login." });
+    console.error("Login error:", err.message);
+    return res.status(500).json({ message: "Server error during login." });
   }
 });
 
@@ -128,13 +147,13 @@ router.get("/me", requireAuth, async (req, res) => {
       return res.status(401).json({ message: "Account no longer exists." });
     }
     const migratedHistory = await claimLegacyPredictions(user);
-    res.json({
+    return res.json({
       migratedHistory,
       user: { id: user._id, name: user.name, email: user.email },
     });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Could not load account session." });
+    console.error("Session error:", err.message);
+    return res.status(500).json({ message: "Could not load account session." });
   }
 });
 
