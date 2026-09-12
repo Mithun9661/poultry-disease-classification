@@ -18,11 +18,18 @@ const PredictionSchema = new mongoose.Schema(
     modelName: { type: String, default: "" },
     modelVersion: { type: String, default: "" },
     inferenceMs: { type: Number, min: 0, default: null },
-    source: { type: String, enum: ["browser", "ml-service"], default: "browser" },
+    source: {
+      type: String,
+      enum: ["browser", "ml-service", "legacy-supabase"],
+      default: "browser",
+    },
+    legacySourceId: { type: String, default: undefined },
+    legacyImagePath: { type: String, default: "" },
   },
   { timestamps: true }
 );
 
 PredictionSchema.index({ user: 1, createdAt: -1 });
+PredictionSchema.index({ legacySourceId: 1 }, { unique: true, sparse: true });
 
 module.exports = mongoose.model("Prediction", PredictionSchema);
