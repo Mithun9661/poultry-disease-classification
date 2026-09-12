@@ -1,0 +1,29 @@
+# Secrets and environment files
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+client/node_modules/
+server/node_modules/
+
+# Build and local deployment output
+client/dist/
+.vercel/
+
+# Runtime uploads and logs
+server/uploads/
+*.log
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+ml/evaluation/results/
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
