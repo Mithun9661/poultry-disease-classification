@@ -1,79 +1,75 @@
 # PoultryDetect — AI Poultry Disease Classification
 
-PoultryDetect is an academic AI-assisted web application for screening poultry fecal sample images and classifying them into four categories: **Healthy, Coccidiosis, Salmonella, and Newcastle**.
+PoultryDetect is an academic AI-assisted web application for screening poultry sample images and classifying them into four classes: **Healthy, Coccidiosis, Salmonella, and Newcastle**.
 
-The live application provides cloud authentication, MobileNetV2 transfer-learning inference, confidence scores, per-class probabilities, symptom/environment context, private scan history, report download, and a responsive browser UI.
-
-> **Live application:** https://poultry-disease-classification.vercel.app
-
+> **Live app:** https://poultry-disease-classification.vercel.app
+>
+> **API health:** https://poultry-disease-classification.vercel.app/api/health
+>
 > **Safety:** This is an academic screening aid, not a veterinary diagnostic system.
 
-## Main Features
+## Production Features
 
-- Register / Login / Logout using Supabase Auth
-- Persistent authenticated sessions
-- Poultry fecal image upload or camera capture
-- JPG/PNG and file-size validation
-- Basic image-quality warnings
-- **MobileNetV2 Transfer Learning** inference through TensorFlow.js
-- Lightweight browser classifier fallback if the deep-learning model cannot load
-- Four-class probability output and confidence score
-- Model name/version and inference-time display
-- Optional observed symptoms and farm-environment context
-- Disease information, prevention guidance and recommended next step
-- Private prediction image storage
-- User-specific scan history protected by Supabase RLS
-- History search/filter/details/delete
-- Downloadable screening report
-- Responsive AI-themed interface
+- MongoDB Atlas account registration and login
+- bcrypt password hashing + JWT-protected API access
+- persistent dashboard and per-user prediction history
+- upload, drag/drop, or mobile camera capture
+- JPG/PNG and image-size validation
+- optional flock symptoms and environment context
+- **MobileNetV2 transfer-learning inference** through TensorFlow.js
+- lightweight browser classifier fallback if the transfer model cannot load
+- confidence, four-class probability output, model name/version and inference time
+- disease information, prevention guidance and recommended next step
+- compressed scan preview stored with prediction history
+- history search/filter/details/delete
+- downloadable screening report
+- responsive dashboard, detector, auth and history UI
 - Vercel production deployment
-- Node/Express/MongoDB reference backend with automated smoke tests
-- GitHub Actions quality checks
+- automated frontend, backend and ML-contract checks
 
 ## Production Architecture
 
 ```mermaid
 flowchart LR
     U[User] --> R[React + Vite]
-    R --> A[Supabase Auth]
+    R --> A[Express API on Vercel]
+    A --> J[JWT Auth + bcrypt]
+    A --> D[(MongoDB Atlas)]
     R --> T[TensorFlow.js]
     T --> M[MobileNetV2 Transfer Learning]
-    T -. failure .-> F[Lightweight Fallback]
+    T -. model load failure .-> F[Lightweight Fallback]
     M --> R
     F --> R
-    R --> D[(Supabase PostgreSQL)]
-    R --> S[Supabase Storage]
-    R --> V[Vercel]
+    R --> A
 ```
 
-### Production Technology Stack
+### Stack
 
 | Layer | Technology |
 |---|---|
 | Frontend | React 18, Vite, React Router |
-| Primary ML inference | MobileNetV2 Transfer Learning + TensorFlow.js |
-| Fallback ML | Lightweight handcrafted-feature browser classifier |
-| Authentication | Supabase Auth |
-| Production database | Supabase PostgreSQL |
-| Image storage | Supabase Storage |
-| Data security | Supabase Row Level Security |
-| Deployment | Vercel |
-| Source control / CI | GitHub + GitHub Actions |
+| Primary inference | MobileNetV2 Transfer Learning + TensorFlow.js |
+| Fallback inference | Handcrafted-feature multiclass classifier |
+| Backend | Node.js + Express |
+| Authentication | bcrypt + signed JWT |
+| Database | MongoDB Atlas + Mongoose |
+| Hosting | Vercel |
+| CI | GitHub Actions |
+
+Supabase was used during an earlier project stage. The final production application no longer depends on Supabase at runtime. Legacy scan records were moved to a MongoDB migration queue and are claimed by matching-email MongoDB accounts.
 
 ## Disease Classes
 
-| Class | Project meaning |
+| Class | Meaning in this project |
 |---|---|
-| Healthy | Image is most similar to healthy training examples |
+| Healthy | Image is most similar to healthy examples |
 | Coccidiosis | Visual pattern is most similar to coccidiosis examples |
 | Salmonella | Visual pattern is most similar to Salmonella examples |
 | Newcastle | Visual pattern is most similar to Newcastle-disease examples |
 
-## Production Machine-Learning Model
+## ML Runtime
 
-The live detector now uses an attributed **MobileNetV2 transfer-learning checkpoint** as the primary model.
-
-Important runtime files:
+The primary browser model is an attributed **MobileNetV2 transfer-learning checkpoint** converted to TensorFlow.js.
 
 ```text
 client/src/ml/browserModel.js
@@ -83,68 +79,172 @@ client/public/models/mobilenetv2/model.json
 client/public/models/mobilenetv2/group1-shard*.bin
 ```
 
-### MobileNetV2 inference contract
+### MobileNetV2 contract
 
-- Input: RGB image
-- Input shape: **128 × 128 × 3**
-- Normalization: pixels scaled to **[0, 1]**
-- Output: **4-class Softmax**
-- Class order: Coccidiosis, Healthy, Newcastle, Salmonella
-- Runtime: TensorFlow.js in the browser
+- RGB input
+- shape: **128 × 128 × 3**
+- normalization: **[0, 1]**
+- output: **4-class Softmax**
+- class order: Coccidiosis, Healthy, Newcastle, Salmonella
+- browser runtime: TensorFlow.js
 
-TensorFlow.js is loaded dynamically only when a scan needs the deep-learning model. This keeps the normal application bundle much smaller than bundling the full ML runtime into every initial page load.
+TensorFlow.js is lazy-loaded only when a scan is run.
 
-### Model provenance
+### Model provenance and metrics
 
-The production MobileNetV2 checkpoint is an **attributed reference checkpoint** from the MIT-licensed upstream repository:
+The production transfer-learning checkpoint is an attributed reference checkpoint from the MIT-licensed upstream repository:
 
 ```text
 Saeed-dev2/poultry_Form_Disease_Deep-Learning-Machine-Learning-Computer-vision
 ```
 
-PoultryDetect does **not** claim that this exact production checkpoint was trained inside this repository.
+PoultryDetect does **not** claim that this exact checkpoint was trained inside this repository. Provenance and upstream license files are preserved under `client/public/models/mobilenetv2/`.
 
-Provenance and license files:
+The upstream project reports approximately **90% validation accuracy** and **93% test accuracy** for its selected MobileNetV2 model. Those numbers are upstream-reported, not a new independent PoultryDetect evaluation.
 
-```text
-client/public/models/mobilenetv2/PROVENANCE.txt
-client/public/models/mobilenetv2/LICENSE-UPSTREAM.txt
+The fallback classifier was independently evaluated on the project subset at approximately **87.4% validation accuracy**. This number must not be presented as MobileNetV2 accuracy.
+
+See `docs/MODEL_CARD.md` and `docs/VALIDATION_AND_TESTING.md` for the interpretation rules.
+
+## Prediction Flow
+
+```mermaid
+flowchart TD
+    A[Register / Login] --> B[Dashboard]
+    B --> C[Upload / Camera Sample]
+    C --> D[Image Validation]
+    D --> E[Lazy-load TensorFlow.js]
+    E --> F{MobileNetV2 available?}
+    F -- Yes --> G[128x128 MobileNetV2 Inference]
+    F -- No --> H[Lightweight Fallback]
+    G --> I[Class + Confidence + Probabilities]
+    H --> I
+    I --> J[Show Result + Guidance]
+    I --> K[Save Result + Context + Preview through Express API]
+    K --> L[(MongoDB Atlas)]
+    L --> M[Dashboard / History]
 ```
 
-Conversion workflow:
+## MongoDB Data Design
+
+### `users`
 
 ```text
-.github/workflows/prepare_transfer_model.yml
+name
+email
+password (bcrypt hash; excluded from normal queries)
+createdAt
+updatedAt
 ```
 
-The upstream project reports approximately **90% validation accuracy** and **93% test accuracy** for its selected MobileNetV2 Transfer Learning model. These are upstream-reported results, not a new independent PoultryDetect evaluation.
-
-See [docs/MODEL_CARD.md](docs/MODEL_CARD.md) and [docs/VALIDATION_AND_TESTING.md](docs/VALIDATION_AND_TESTING.md) for the exact interpretation rules.
-
-## Lightweight Fallback Model
-
-If TensorFlow.js or the MobileNetV2 asset cannot load, the detector automatically uses its earlier lightweight classifier.
+### `predictions`
 
 ```text
-client/src/ml/lightweightModel.js
-client/src/ml/poultryBrowserModel.json
+user
+predictedClass
+confidence
+allProbabilities
+imageUrl (compressed preview data URI)
+reportedSymptoms
+environment
+modelName
+modelVersion
+inferenceMs
+treatmentSuggestion
+source
+createdAt
+updatedAt
 ```
 
-The fallback model uses RGB/HSV statistics, histograms, grayscale/gradient features and spatial RGB features with a learned multiclass linear classifier.
+A legacy migration queue preserves old Supabase prediction metadata until a matching MongoDB account is available.
 
-An independent validation experiment on the project subset produced approximately **87.4% accuracy** for this fallback classifier. This figure must not be presented as MobileNetV2 accuracy.
+## API
+
+```text
+GET    /api/health
+POST   /api/auth/register
+POST   /api/auth/login
+GET    /api/auth/me
+GET    /api/history
+POST   /api/history
+DELETE /api/history/:id
+POST   /api/predict
+```
+
+Protected endpoints require a valid Bearer JWT. History queries and deletes are always scoped to the authenticated user.
+
+## Security Controls
+
+- bcrypt password hashing
+- JWT verification pinned to HS256
+- password field excluded from normal Mongoose queries
+- authentication rate limiting
+- general API rate limiting
+- Helmet security headers
+- explicit production CORS allowlist
+- JSON body-size limits
+- email/password/name validation
+- prediction-class, probability, symptom and environment validation
+- per-user history authorization
+- Vercel browser security headers
+- repository-wide `.gitignore` for `.env` and generated artifacts
+
+Production secrets must remain in deployment environment variables and must never be committed to GitHub.
+
+## Environment Variables
+
+Use `server/.env.example` as the template:
+
+```env
+PORT=5000
+MONGO_URI=mongodb+srv://<username>:<password>@<cluster>/<database>
+JWT_SECRET=<long-random-secret>
+CORS_ORIGIN=http://localhost:5173,https://poultry-disease-classification.vercel.app
+ML_SERVICE_URL=http://localhost:8000
+```
+
+## Local Development
+
+```bash
+git clone https://github.com/Mithun9661/poultry-disease-classification.git
+cd poultry-disease-classification
+```
+
+Backend:
+
+```bash
+cd server
+npm install
+cp .env.example .env
+npm run dev
+```
+
+Frontend:
+
+```bash
+cd client
+npm install
+npm run dev
+```
+
+The Vite development server proxies `/api` to `http://localhost:5000`.
+
+## Automated Testing
+
+`.github/workflows/quality_checks.yml` runs:
+
+1. React/Vite production build
+2. Express + MongoDB in-memory smoke test
+3. authentication validation and unauthorized-access checks
+4. prediction-history create/read/delete and cross-user isolation checks
+5. MobileNetV2 TensorFlow.js model-contract verification
+6. Python evaluation-script syntax validation
+
+The backend smoke test covers the full core API sequence: health → register → login → session → protected history → create/read/delete → user isolation.
 
 ## Reproducible Model Evaluation
 
-The repository includes an evaluation utility for the exact Keras MobileNetV2 checkpoint:
-
-```text
-ml/evaluation/evaluate_mobilenet.py
-```
-
-It produces accuracy, precision, recall, F1, per-class metrics and confusion-matrix files for a declared validation/test directory.
-
-Example:
+`ml/evaluation/evaluate_mobilenet.py` can evaluate the declared Keras checkpoint against a declared validation/test split and generate accuracy, precision, recall, F1, per-class metrics and a confusion matrix.
 
 ```bash
 python ml/evaluation/evaluate_mobilenet.py \
@@ -153,136 +253,24 @@ python ml/evaluation/evaluate_mobilenet.py \
   --output-dir ml/evaluation/results
 ```
 
-## Prediction Flow
-
-```mermaid
-flowchart TD
-    A[Register / Login] --> B[Upload or Capture Poultry Sample]
-    B --> C[Validate Image]
-    C --> D[Lazy-load TensorFlow.js]
-    D --> E{MobileNetV2 available?}
-    E -- Yes --> F[128x128 MobileNetV2 Inference]
-    E -- No --> G[Lightweight Fallback]
-    F --> H[Class + Confidence + Probabilities]
-    G --> H
-    H --> I[Display Model Name + Inference Time]
-    H --> J[Upload Private Image]
-    H --> K[Save Prediction Metadata]
-    J --> L[History Dashboard]
-    K --> L
-    H --> M[Download Screening Report]
-```
-
-## Supabase Data Design
-
-The production `predictions` table stores fields such as:
-
-```text
-id
-user_id
-predicted_class
-confidence
-probabilities
-image_path
-reported_symptoms
-environment
-model_name
-model_version
-inference_ms
-created_at
-```
-
-Uploaded images are stored in the private bucket:
-
-```text
-prediction-images
-```
-
-Row Level Security and user-specific storage paths restrict authenticated users to their own records and image objects.
-
-## Node / Express / MongoDB Backend
-
-A complete MERN-compatible backend implementation is available under:
-
-```text
-server/
-```
-
-It includes:
-
-- Express API
-- Mongoose MongoDB connection
-- JWT registration/login
-- authenticated prediction-history create/read/delete APIs
-- symptoms/environment/model metadata fields
-- optional external ML-service endpoint
-- JPG/PNG upload validation
-- configurable CORS
-- `mongodb-memory-server` smoke tests
-
-API endpoints:
-
-```text
-GET    /api/health
-POST   /api/auth/register
-POST   /api/auth/login
-GET    /api/history
-POST   /api/history
-DELETE /api/history/:id
-POST   /api/predict
-```
-
-Run the backend test:
-
-```bash
-cd server
-npm install
-npm test
-```
-
-The current public site still uses Supabase as its operational cloud auth/database layer. The MongoDB backend becomes a live persistent deployment only when a real production `MONGO_URI` is configured; the repository does not fake a MongoDB production connection.
-
-## Automated Quality Checks
-
-GitHub Actions workflow:
-
-```text
-.github/workflows/quality_checks.yml
-```
-
-It checks:
-
-1. React/Vite production build
-2. Express + MongoDB authenticated smoke test
-3. MobileNetV2 TensorFlow.js model contract
-4. Python evaluation-script syntax
-
-The ML contract verifies a 128×128×3 input, four Softmax outputs, model shards, provenance and license files.
-
 ## Repository Structure
 
 ```text
 poultry-disease-classification/
 ├── .github/workflows/
-│   ├── prepare_transfer_model.yml
-│   └── quality_checks.yml
+├── api/                         # Vercel Express function entry
 ├── client/
 │   ├── public/models/mobilenetv2/
 │   └── src/
+│       ├── apiClient.js
 │       ├── components/
 │       ├── ml/
-│       ├── pages/
-│       ├── AuthContext.jsx
-│       └── supabaseClient.js
+│       └── pages/
 ├── docs/
-│   ├── ARCHITECTURE.md
-│   ├── MODEL_CARD.md
-│   ├── VALIDATION_AND_TESTING.md
-│   └── VIVA_GUIDE.md
 ├── ml/
-│   ├── evaluation/evaluate_mobilenet.py
-│   ├── training/
-│   └── inference_service/
+│   ├── evaluation/
+│   ├── inference_service/
+│   └── training/
 ├── server/
 │   ├── config/
 │   ├── middleware/
@@ -294,23 +282,13 @@ poultry-disease-classification/
 └── vercel.json
 ```
 
-## Run the Production Frontend Locally
+## Known Limitations
 
-Requirements: Node.js 18+ and a modern browser.
-
-```bash
-git clone https://github.com/Mithun9661/poultry-disease-classification.git
-cd poultry-disease-classification/client
-npm install
-npm run dev
-```
-
-Production build:
-
-```bash
-npm run build
-npm run preview
-```
+- The model is an academic screening model and is not clinically validated.
+- Confidence is a model probability output, not a guarantee of correctness.
+- Images unlike the training domain may be unreliable.
+- Symptoms/environment are stored as supporting context; they do not currently modify the image-model score.
+- The production MobileNetV2 checkpoint is attributed upstream rather than trained inside this repository.
 
 ## Documentation
 
