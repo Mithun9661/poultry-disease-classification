@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../AuthContext";
-import { supabase } from "../supabaseClient";
+import { fetchHistory, normalizePrediction } from "../apiClient";
 
 const classes = ["Healthy", "Coccidiosis", "Salmonella", "Newcastle"];
 
@@ -17,28 +17,8 @@ export default function Dashboard() {
 
     async function loadDashboard() {
       try {
-        const { data, error: queryError } = await supabase
-          .from("predictions")
-          .select("id,predicted_class,confidence,image_path,created_at")
-          .order("created_at", { ascending: false });
-        if (queryError) throw queryError;
-
-        const rows = data || [];
-        const recentPaths = rows.slice(0, 3).map((row) => row.image_path).filter(Boolean);
-        const urlMap = {};
-
-        if (recentPaths.length) {
-          const { data: signed } = await supabase.storage
-            .from("prediction-images")
-            .createSignedUrls(recentPaths, 60 * 30);
-          (signed || []).forEach((item, index) => {
-            if (item?.signedUrl) urlMap[recentPaths[index]] = item.signedUrl;
-          });
-        }
-
-        if (active) {
-          setScans(rows.map((row) => ({ ...row, imageUrl: urlMap[row.image_path] || "" })));
-        }
+        const rows = await fetchHistory();
+        if (active) setScans(rows.map(normalizePrediction));
       } catch (err) {
         console.error(err);
         if (active) setError("Dashboard data could not be loaded right now.");
@@ -72,7 +52,7 @@ export default function Dashboard() {
           <div>
             <span className="dashboard-eyebrow">POULTRY HEALTH WORKSPACE</span>
             <h1>Welcome back, {user?.name || "User"}</h1>
-            <p>Run a new screening, review recent results and track your flock-health checks in one place.</p>
+            <p>Run a new screening, review recent results and track your MongoDB-backed flock-health checks in one place.</p>
           </div>
           <button className="dashboard-primary-action" onClick={() => navigate("/predict")}>+ New AI scan</button>
         </div>
@@ -96,24 +76,15 @@ export default function Dashboard() {
             {loading ? (
               <div className="dashboard-empty">Loading recent screenings…</div>
             ) : scans.length === 0 ? (
-              <div className="dashboard-empty">
-                <strong>No screenings yet</strong>
-                <p>Your first AI scan will appear here.</p>
-                <button onClick={() => navigate("/predict")}>Start first scan</button>
-              </div>
+              <div className="dashboard-empty"><strong>No screenings yet</strong><p>Your first AI scan will appear here.</p><button onClick={() => navigate("/predict")}>Start first scan</button></div>
             ) : (
               <div className="dashboard-recent-list">
                 {scans.slice(0, 3).map((scan) => {
                   const confidence = Math.round(Number(scan.confidence || 0) * 100);
                   return (
-                    <button className="dashboard-recent-item" key={scan.id} onClick={() => navigate("/history")}> 
-                      <div className="dashboard-recent-image">
-                        {scan.imageUrl ? <img src={scan.imageUrl} alt="Poultry screening sample" /> : <span>AI</span>}
-                      </div>
-                      <div className="dashboard-recent-copy">
-                        <strong>{scan.predicted_class}</strong>
-                        <small>{new Date(scan.created_at).toLocaleString()}</small>
-                      </div>
+                    <button className="dashboard-recent-item" key={scan.id} onClick={() => navigate("/history")}>
+                      <div className="dashboard-recent-image">{scan.imageUrl ? <img src={scan.imageUrl} alt="Poultry screening sample" /> : <span>AI</span>}</div>
+                      <div className="dashboard-recent-copy"><strong>{scan.predicted_class}</strong><small>{new Date(scan.created_at).toLocaleString()}</small></div>
                       <div className="dashboard-recent-score"><strong>{confidence}%</strong><span>confidence</span></div>
                     </button>
                   );
@@ -141,7 +112,7 @@ export default function Dashboard() {
         <div className="dashboard-quick-grid">
           <button onClick={() => navigate("/predict")}><span>◎</span><div><strong>Detect disease</strong><small>Upload or capture a poultry sample</small></div><b>→</b></button>
           <button onClick={() => navigate("/history")}><span>▤</span><div><strong>Scan history</strong><small>Review saved screening results</small></div><b>→</b></button>
-          <article><span>✓</span><div><strong>Cloud sync active</strong><small>Results secured with your account</small></div></article>
+          <article><span>✓</span><div><strong>MongoDB sync active</strong><small>Results secured through your Express API account</small></div></article>
         </div>
 
         <p className="dashboard-disclaimer">PoultryDetect is an academic screening aid and not a substitute for veterinary diagnosis.</p>
