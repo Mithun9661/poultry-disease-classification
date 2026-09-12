@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "../supabaseClient";
+import { deletePrediction as deleteHistoryItem, fetchHistory, normalizePrediction } from "../apiClient";
 
 const filters = ["All", "Healthy", "Coccidiosis", "Salmonella", "Newcastle"];
 const symptomLabels = {
@@ -34,32 +34,8 @@ export default function History() {
     async function loadHistory() {
       try {
         setLoading(true);
-        const { data, error: queryError } = await supabase
-          .from("predictions")
-          .select("id,predicted_class,confidence,probabilities,image_path,reported_symptoms,environment,model_name,model_version,inference_ms,created_at")
-          .order("created_at", { ascending: false });
-
-        if (queryError) throw queryError;
-
-        const rows = data || [];
-        const paths = rows.map((row) => row.image_path).filter(Boolean);
-        const urlMap = {};
-
-        if (paths.length) {
-          const { data: signed, error: signedError } = await supabase.storage
-            .from("prediction-images")
-            .createSignedUrls(paths, 60 * 60);
-
-          if (!signedError && signed) {
-            signed.forEach((item, index) => {
-              if (item?.signedUrl) urlMap[paths[index]] = item.signedUrl;
-            });
-          }
-        }
-
-        if (active) {
-          setPredictions(rows.map((row) => ({ ...row, imageUrl: urlMap[row.image_path] || "" })));
-        }
+        const rows = await fetchHistory();
+        if (active) setPredictions(rows.map(normalizePrediction));
       } catch (err) {
         console.error(err);
         if (active) setError("Could not load your scan history.");
@@ -99,19 +75,7 @@ export default function History() {
 
     try {
       setDeletingId(item.id);
-      if (item.image_path) {
-        const { error: storageError } = await supabase.storage
-          .from("prediction-images")
-          .remove([item.image_path]);
-        if (storageError) throw storageError;
-      }
-
-      const { error: deleteError } = await supabase
-        .from("predictions")
-        .delete()
-        .eq("id", item.id);
-
-      if (deleteError) throw deleteError;
+      await deleteHistoryItem(item.id);
       setPredictions((current) => current.filter((row) => row.id !== item.id));
       if (selected?.id === item.id) setSelected(null);
     } catch (err) {
@@ -139,55 +103,22 @@ export default function History() {
           <div>
             <span className="history-eyebrow">AI SCREENING RECORDS</span>
             <h1>Scan history</h1>
-            <p>Review your saved poultry disease screening results, confidence scores, symptoms, model runtime and farm context.</p>
+            <p>Review your MongoDB-backed poultry disease screening results, confidence scores, symptoms, model runtime and farm context.</p>
           </div>
           <button className="history-new-scan" onClick={() => navigate("/predict")}>+ New scan</button>
         </div>
 
         <div className="history-stats-grid">
-          <article className="history-stat-card">
-            <span>Total scans</span>
-            <strong>{stats.total}</strong>
-            <small>All saved screenings</small>
-          </article>
-          <article className="history-stat-card healthy-stat">
-            <span>Healthy</span>
-            <strong>{stats.healthy}</strong>
-            <small>Healthy-class results</small>
-          </article>
-          <article className="history-stat-card disease-stat">
-            <span>Disease flags</span>
-            <strong>{stats.disease}</strong>
-            <small>Non-healthy results</small>
-          </article>
-          <article className="history-stat-card confidence-stat">
-            <span>Avg. confidence</span>
-            <strong>{stats.avgConfidence}%</strong>
-            <small>Across your scans</small>
-          </article>
+          <article className="history-stat-card"><span>Total scans</span><strong>{stats.total}</strong><small>All saved screenings</small></article>
+          <article className="history-stat-card healthy-stat"><span>Healthy</span><strong>{stats.healthy}</strong><small>Healthy-class results</small></article>
+          <article className="history-stat-card disease-stat"><span>Disease flags</span><strong>{stats.disease}</strong><small>Non-healthy results</small></article>
+          <article className="history-stat-card confidence-stat"><span>Avg. confidence</span><strong>{stats.avgConfidence}%</strong><small>Across your scans</small></article>
         </div>
 
         <div className="history-toolbar">
-          <div className="history-search-wrap">
-            <span>⌕</span>
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search disease, symptom or model..."
-              aria-label="Search scan history"
-            />
-          </div>
-
+          <div className="history-search-wrap"><span>⌕</span><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search disease, symptom or model..." aria-label="Search scan history" /></div>
           <div className="history-filter-row">
-            {filters.map((item) => (
-              <button
-                key={item}
-                className={filter === item ? "active" : ""}
-                onClick={() => setFilter(item)}
-              >
-                {item}
-              </button>
-            ))}
+            {filters.map((item) => <button key={item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>{item}</button>)}
           </div>
         </div>
 
@@ -196,17 +127,9 @@ export default function History() {
         {loading ? (
           <div className="history-loading-card">Loading your scan history…</div>
         ) : predictions.length === 0 ? (
-          <div className="history-empty-card">
-            <div className="history-empty-icon">AI</div>
-            <h2>No scans yet</h2>
-            <p>Analyze your first poultry sample and it will appear here automatically.</p>
-            <button onClick={() => navigate("/predict")}>Start first scan</button>
-          </div>
+          <div className="history-empty-card"><div className="history-empty-icon">AI</div><h2>No scans yet</h2><p>Analyze your first poultry sample and it will appear here automatically.</p><button onClick={() => navigate("/predict")}>Start first scan</button></div>
         ) : filteredPredictions.length === 0 ? (
-          <div className="history-empty-card compact">
-            <h2>No matching scans</h2>
-            <p>Try another filter or search term.</p>
-          </div>
+          <div className="history-empty-card compact"><h2>No matching scans</h2><p>Try another filter or search term.</p></div>
         ) : (
           <div className="history-premium-grid">
             {filteredPredictions.map((item) => {
@@ -216,40 +139,17 @@ export default function History() {
               return (
                 <article className="history-premium-card" key={item.id}>
                   <button className="history-image-button" onClick={() => setSelected(item)}>
-                    {item.imageUrl ? (
-                      <img src={item.imageUrl} alt={`${item.predicted_class} poultry sample`} />
-                    ) : (
-                      <div className="history-image-placeholder">Image unavailable</div>
-                    )}
+                    {item.imageUrl ? <img src={item.imageUrl} alt={`${item.predicted_class} poultry sample`} /> : <div className="history-image-placeholder">Image unavailable</div>}
                     <span className="history-image-overlay">View details</span>
                   </button>
 
                   <div className="history-premium-body">
-                    <div className="history-card-topline">
-                      <span className={`history-status-badge ${isHealthy ? "healthy" : "disease"}`}>
-                        {item.predicted_class}
-                      </span>
-                      <span className="history-confidence-pill">{confidence}%</span>
-                    </div>
-
-                    <div className="history-confidence-track">
-                      <i style={{ width: `${confidence}%` }} />
-                    </div>
-
+                    <div className="history-card-topline"><span className={`history-status-badge ${isHealthy ? "healthy" : "disease"}`}>{item.predicted_class}</span><span className="history-confidence-pill">{confidence}%</span></div>
+                    <div className="history-confidence-track"><i style={{ width: `${confidence}%` }} /></div>
                     <p className="history-card-date">{formatDate(item.created_at)}</p>
                     {item.model_name && <p className="history-card-date">Model: {item.model_name}{item.inference_ms ? ` · ${item.inference_ms} ms` : ""}</p>}
                     {contextCount > 0 && <p className="history-card-date">{contextCount} reported symptom{contextCount === 1 ? "" : "s"}</p>}
-
-                    <div className="history-card-actions">
-                      <button onClick={() => setSelected(item)}>Details</button>
-                      <button
-                        className="delete"
-                        onClick={() => deletePrediction(item)}
-                        disabled={deletingId === item.id}
-                      >
-                        {deletingId === item.id ? "Deleting…" : "Delete"}
-                      </button>
-                    </div>
+                    <div className="history-card-actions"><button onClick={() => setSelected(item)}>Details</button><button className="delete" onClick={() => deletePrediction(item)} disabled={deletingId === item.id}>{deletingId === item.id ? "Deleting…" : "Delete"}</button></div>
                   </div>
                 </article>
               );
@@ -262,19 +162,12 @@ export default function History() {
         <div className="history-modal-backdrop" onClick={() => setSelected(null)}>
           <div className="history-modal" onClick={(e) => e.stopPropagation()}>
             <button className="history-modal-close" onClick={() => setSelected(null)}>×</button>
-            <div className="history-modal-image">
-              {selected.imageUrl ? <img src={selected.imageUrl} alt="Selected poultry sample" /> : <div>Image unavailable</div>}
-            </div>
+            <div className="history-modal-image">{selected.imageUrl ? <img src={selected.imageUrl} alt="Selected poultry sample" /> : <div>Image unavailable</div>}</div>
             <div className="history-modal-content">
-              <span className={`history-status-badge ${selected.predicted_class === "Healthy" ? "healthy" : "disease"}`}>
-                {selected.predicted_class}
-              </span>
+              <span className={`history-status-badge ${selected.predicted_class === "Healthy" ? "healthy" : "disease"}`}>{selected.predicted_class}</span>
               <h2>{selected.predicted_class}</h2>
               <p className="history-modal-date">{formatDate(selected.created_at)}</p>
-              <div className="history-modal-confidence">
-                <span>Prediction confidence</span>
-                <strong>{Math.round(selected.confidence * 100)}%</strong>
-              </div>
+              <div className="history-modal-confidence"><span>Prediction confidence</span><strong>{Math.round(selected.confidence * 100)}%</strong></div>
 
               {selected.model_name && (
                 <div className={`model-runtime-strip ${selected.model_name.includes("MobileNetV2") ? "transfer" : "fallback"}`}>
@@ -285,37 +178,17 @@ export default function History() {
               )}
 
               <div className="history-modal-probabilities">
-                {Object.entries(selected.probabilities || {})
-                  .sort((a, b) => b[1] - a[1])
-                  .map(([label, probability]) => (
-                    <div key={label}>
-                      <span>{label}</span>
-                      <strong>{Math.round(probability * 100)}%</strong>
-                    </div>
-                  ))}
+                {Object.entries(selected.probabilities || {}).sort((a, b) => b[1] - a[1]).map(([label, probability]) => <div key={label}><span>{label}</span><strong>{Math.round(probability * 100)}%</strong></div>)}
               </div>
 
               <div className="history-context-block">
                 <h3>Reported symptoms</h3>
-                {(selected.reported_symptoms || []).length ? (
-                  <div className="history-context-chips">
-                    {selected.reported_symptoms.map((value) => <span key={value}>{symptomLabels[value] || value}</span>)}
-                  </div>
-                ) : <p className="history-modal-date">No symptoms were selected for this scan.</p>}
-
-                {selected.environment && Object.keys(selected.environment).length > 0 && (
-                  <div className="history-context-env">
-                    {Object.entries(selected.environment).map(([key, value]) => (
-                      <p key={key}><span>{pretty(key)}</span><strong>{pretty(value)}</strong></p>
-                    ))}
-                  </div>
-                )}
+                {(selected.reported_symptoms || []).length ? <div className="history-context-chips">{selected.reported_symptoms.map((value) => <span key={value}>{symptomLabels[value] || value}</span>)}</div> : <p className="history-modal-date">No symptoms were selected for this scan.</p>}
+                {selected.environment && Object.keys(selected.environment).length > 0 && <div className="history-context-env">{Object.entries(selected.environment).map(([key, value]) => <p key={key}><span>{pretty(key)}</span><strong>{pretty(value)}</strong></p>)}</div>}
               </div>
 
               <p className="history-modal-note">Reported context is supplementary. The saved confidence score comes from the image classifier. Academic screening result only — not a veterinary diagnosis.</p>
-              <button className="history-modal-delete" onClick={() => deletePrediction(selected)} disabled={deletingId === selected.id}>
-                {deletingId === selected.id ? "Deleting…" : "Delete this scan"}
-              </button>
+              <button className="history-modal-delete" onClick={() => deletePrediction(selected)} disabled={deletingId === selected.id}>{deletingId === selected.id ? "Deleting…" : "Delete this scan"}</button>
             </div>
           </div>
         </div>
