@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { Navigate, Link, useNavigate } from "react-router-dom";
-import { supabase } from "../supabaseClient";
 import { useAuth } from "../AuthContext";
 
 function Icon({ type }) {
@@ -15,7 +14,7 @@ function Icon({ type }) {
 }
 
 export default function Login() {
-  const { user, loading: authLoading, login, register } = useAuth();
+  const { user, loading: authLoading, login } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -31,33 +30,16 @@ export default function Login() {
     setError("");
     setLoading(true);
 
-    const cleanEmail = email.trim().toLowerCase();
     try {
-      await login(cleanEmail, password);
+      await login(email.trim().toLowerCase(), password);
       navigate("/dashboard", { replace: true });
-      return;
-    } catch (mongoError) {
-      if (mongoError?.status !== 401) {
-        setError(mongoError?.message || "Login failed. Please try again.");
-        setLoading(false);
-        return;
-      }
-
-      // One-time compatibility path for accounts created before the MongoDB migration.
-      try {
-        const { data, error: legacyError } = await supabase.auth.signInWithPassword({ email: cleanEmail, password });
-        if (legacyError || !data?.user) throw legacyError || new Error("Invalid login");
-
-        const legacyName = data.user.user_metadata?.full_name || data.user.user_metadata?.name || cleanEmail.split("@")[0];
-        try {
-          await register(legacyName, cleanEmail, password);
-        } finally {
-          await supabase.auth.signOut();
-        }
-        navigate("/dashboard", { replace: true });
-      } catch (legacyMigrationError) {
-        const message = legacyMigrationError?.message || "Incorrect email or password. Please try again.";
-        setError(message.toLowerCase().includes("invalid") ? "Incorrect email or password. Please try again." : message);
+    } catch (err) {
+      if (err?.status === 401) {
+        setError("Incorrect email or password. If this was an old pre-migration account, create the MongoDB account once with the same email to reclaim legacy scans.");
+      } else if (err?.status === 429) {
+        setError("Too many login attempts. Please wait a few minutes and try again.");
+      } else {
+        setError(err?.message || "Login failed. Please try again.");
       }
     } finally {
       setLoading(false);
@@ -97,8 +79,8 @@ export default function Login() {
             {error && <div className="auth-error-premium">{error}</div>}
 
             <form onSubmit={handleSubmit}>
-              <div className="premium-field"><label htmlFor="email">Email address</label><div className="premium-input-wrap"><Icon type="mail" /><input id="email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" required /></div></div>
-              <div className="premium-field"><label htmlFor="password">Password</label><div className="premium-input-wrap"><Icon type="lock" /><input id="password" type={showPassword ? "text" : "password"} autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter your password" required /><button type="button" className="password-toggle" onClick={() => setShowPassword((v) => !v)} aria-label={showPassword ? "Hide password" : "Show password"}><Icon type="eye" /></button></div></div>
+              <div className="premium-field"><label htmlFor="email">Email address</label><div className="premium-input-wrap"><Icon type="mail" /><input id="email" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" maxLength={254} required /></div></div>
+              <div className="premium-field"><label htmlFor="password">Password</label><div className="premium-input-wrap"><Icon type="lock" /><input id="password" type={showPassword ? "text" : "password"} autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter your password" minLength={6} maxLength={128} required /><button type="button" className="password-toggle" onClick={() => setShowPassword((v) => !v)} aria-label={showPassword ? "Hide password" : "Show password"}><Icon type="eye" /></button></div></div>
               <button className="premium-auth-button" type="submit" disabled={loading}><span>{loading ? "Logging in…" : "Log in"}</span><span>→</span></button>
             </form>
 
