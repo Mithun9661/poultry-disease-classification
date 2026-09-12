@@ -1,48 +1,66 @@
 import { createContext, useContext, useEffect, useState } from "react";
-import { supabase } from "./supabaseClient";
+import {
+  clearSession,
+  fetchCurrentUser,
+  getStoredUser,
+  getToken,
+  loginWithMongo,
+  registerWithMongo,
+} from "./apiClient";
 
 const AuthContext = createContext(null);
 
-function mapUser(authUser) {
-  if (!authUser) return null;
-  return {
-    id: authUser.id,
-    email: authUser.email,
-    name: authUser.user_metadata?.full_name || authUser.user_metadata?.name || authUser.email?.split("@")[0] || "User",
-  };
-}
-
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() => getStoredUser());
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    let mounted = true;
+    let active = true;
 
-    supabase.auth.getSession().then(({ data }) => {
-      if (!mounted) return;
-      setUser(mapUser(data.session?.user));
-      setLoading(false);
-    });
+    async function restoreSession() {
+      const token = getToken();
+      if (!token) {
+        if (active) {
+          setUser(null);
+          setLoading(false);
+        }
+        return;
+      }
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(mapUser(session?.user));
-      setLoading(false);
-    });
+      try {
+        const currentUser = await fetchCurrentUser();
+        if (active) setUser(currentUser || null);
+      } catch {
+        clearSession();
+        if (active) setUser(null);
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
 
-    return () => {
-      mounted = false;
-      listener.subscription.unsubscribe();
-    };
+    restoreSession();
+    return () => { active = false; };
   }, []);
 
+  async function login(email, password) {
+    const nextUser = await loginWithMongo(email, password);
+    setUser(nextUser);
+    return nextUser;
+  }
+
+  async function register(name, email, password) {
+    const nextUser = await registerWithMongo(name, email, password);
+    setUser(nextUser);
+    return nextUser;
+  }
+
   async function logout() {
-    await supabase.auth.signOut();
+    clearSession();
     setUser(null);
   }
 
   return (
-    <AuthContext.Provider value={{ user, loading, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout }}>
       {children}
     </AuthContext.Provider>
   );
