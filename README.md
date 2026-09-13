@@ -296,6 +296,7 @@ poultry-disease-classification/
 - [Model Card](docs/MODEL_CARD.md)
 - [Validation and Testing](docs/VALIDATION_AND_TESTING.md)
 - [Viva Guide](docs/VIVA_GUIDE.md)
+- [Final Submission Guide](docs/FINAL_SUBMISSION_GUIDE.md)
 
 ## Disclaimer
 
